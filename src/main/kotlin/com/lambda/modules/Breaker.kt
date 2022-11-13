@@ -6,7 +6,6 @@ import com.lambda.client.event.SafeClientEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
 import com.lambda.client.util.math.VectorUtils.toVec3dCenter
-import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.network.play.client.CPacketAnimation
 import net.minecraft.network.play.client.CPacketPlayerDigging
@@ -19,34 +18,34 @@ import java.io.InputStreamReader
 import java.lang.Integer.parseInt
 import java.lang.Math.ceil
 import java.net.URL
+import java.util.*
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
-    var toBreak: ArrayList<String> = ArrayList()
+    var queue: Queue<String> = PriorityQueue<String>()
     var list: ArrayList<String> = ArrayList()
 
     var x = 0
     var z = 0
 
-    var count = 0;
+    var traveling = false
 
     var empty = false;
 
     var state = 0
 
-    var sent = false
+    var broken = true
 
     init {
 
         onEnable {
-            sent = false
             state = 0;
         }
 
         safeListener<TickEvent.ClientTickEvent> {
             if (state == 0) {
                 //sent get req
-                val url = URL("http://2.tcp.ngrok.io:14002/assign/")
+                val url = URL("http://127.0.0.1:8000/assign")
                 val connection = url.openConnection()
                 BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                     var line: String?
@@ -63,46 +62,48 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         }
 
                         if (!empty) {
-                            //add coords to the arraylist
-                            toBreak.add(line.toString())
+                            queue.add(line.toString())
                         }
                     }
                     if (empty) {
-                        state = 3
+                        state = 0
+                        return@safeListener
                     } else {
                         state = 1
                     }
                 }
             }
             if (state == 1) {
-                for (i in 0 until toBreak.size - 1) {
+                while (!queue.isEmpty()) {
+                    if (broken) {
+                        var coord = queue.poll();
 
-                    MessageSendHelper.sendChatMessage(toBreak[i])
-                    //take coords from thingy
+                        if (coord == null) {
+                            state = 0
+                            return@safeListener
+                        }
 
-                    x = parseInt(toBreak[i].split(" ")[0])
-                    z = parseInt(toBreak[i].split(" ")[1])
+                        x = parseInt(coord.split(" ")[0])
+                        z = parseInt(coord.split(" ")[1])
+
+                        broken = false;
+                    }
 
 //                    MessageSendHelper.sendChatMessage("$x $z")
+                        //goto thingy
+                    if (!traveling) {
+                        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $x ${z + 2}")
+                        traveling = true
+                    }
 
-                    //goto thingy
-                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $x ${z + 2}")
-                    state = 2
+                    if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
+                        mineBlock(BlockPos(x, 255, z), false)
+                        broken = true;
+                        traveling = false
+                    }
+                }
 
-                }
-            }
-            if (state == 2) {
-
-                if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                    mineBlock(BlockPos(x, 255, z), false)
-                    state = 1
-                }
-            }
-            if (state == 3) {
-                if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                    state = 0
-                    toBreak.clear()
-                }
+                state = 0
             }
         }
     }
