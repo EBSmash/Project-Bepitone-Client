@@ -74,7 +74,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 }
             }
             if (state == 1) {
-                while (!queue.isEmpty()) {
+                if (!queue.isEmpty()) {
                     if (broken) {
                         var coord = queue.poll();
 
@@ -89,8 +89,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         broken = false;
                     }
 
-//                    MessageSendHelper.sendChatMessage("$x $z")
-                        //goto thingy
+                    //goto thingy
                     if (!traveling) {
                         BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $x ${z + 2}")
                         traveling = true
@@ -101,9 +100,9 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         broken = true;
                         traveling = false
                     }
+                } else {
+                    state = 0
                 }
-
-                state = 0
             }
         }
     }
