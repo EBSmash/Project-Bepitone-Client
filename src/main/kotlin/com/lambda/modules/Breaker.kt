@@ -47,17 +47,21 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var broken = true
 
+
+    private val server by setting("Bepitone API Server", "Unchanged")
+
     init {
 
         onEnable {
             state = 0;
+            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("allowplace false")
         }
 
         safeListener<TickEvent.ClientTickEvent> {
             if (state == 0) {
                 //sent get req
                 try {
-                    val url = URL("http://127.0.0.1:8000/assign")
+                    val url = URL("$server /assign")
                     val connection = url.openConnection()
                     BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                         var line: String?
@@ -85,7 +89,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         }
                     }
                 } catch (_: ConnectException) {
-                    MessageSendHelper.sendErrorMessage("failed to connect to api \n Message EBS#2574.")
+                    MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
                     disable()
                 } catch (_: IOException) {
                     MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD.")
