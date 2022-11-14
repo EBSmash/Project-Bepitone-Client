@@ -7,9 +7,11 @@ import com.lambda.client.plugin.api.PluginModule
 import com.lambda.client.util.TickTimer
 import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.Timer
+import com.lambda.client.util.items.swapToItem
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.init.Blocks
+import net.minecraft.init.Items
 import net.minecraft.network.play.client.CPacketPlayerDigging
 import net.minecraft.util.EnumFacing
 import net.minecraft.util.math.BlockPos
@@ -48,7 +50,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     var broken = true
 
 
-    private val server by setting("Bepitone API Server", "Unchanged")
+    private val server by setting("Bepitone API Server IP", "Unchanged")
 
     init {
 
@@ -61,7 +63,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             if (state == 0) {
                 //sent get req
                 try {
-                    val url = URL("$server/assign")
+                    val url = URL("https://$server:8000/assign")
                     val connection = url.openConnection()
                     BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                         var line: String?
@@ -131,6 +133,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && shouldBreak) {
+                        swapToItem(Items.DIAMOND_PICKAXE)
                         if (baritonePaused){
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("pause")
                             connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, BlockPos(x, 255, z), EnumFacing.DOWN))
