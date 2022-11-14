@@ -61,7 +61,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             if (state == 0) {
                 //sent get req
                 try {
-                    val url = URL("$server /assign")
+                    val url = URL("$server/assign")
                     val connection = url.openConnection()
                     BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                         var line: String?
