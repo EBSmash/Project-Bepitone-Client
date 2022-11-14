@@ -87,18 +87,19 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             state = 1
                         }
                     }
-                }
-                catch (_: ConnectException){
-                  MessageSendHelper.sendErrorMessage("failed to connect to api \n Message EBS#2574.")
-                  disable()
-                }
-                catch (_: IOException){
+                } catch (_: ConnectException) {
+                    MessageSendHelper.sendErrorMessage("failed to connect to api \n Message EBS#2574.")
+                    disable()
+                } catch (_: IOException) {
                     MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD.")
                     disable()
                 }
             }
             if (state == 1) {
+
                 if (!queue.isEmpty()) {
+
+
                     if (broken) {
                         var coord = queue.poll();
 
@@ -112,14 +113,14 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
                         broken = false;
                     }
-                    if(mc.world.getBlockState(BlockPos(x, 255, z).south()).block == Blocks.AIR){
+                    if (mc.world.getBlockState(BlockPos(x, 255, z).south()).block == Blocks.AIR) {
                         shouldBreak = false;
                         traveling = true;
                         broken = true
-                    }
-                    else{
+                    } else {
                         shouldBreak = true;
                     }
+
 
                     //goto thingy
                     if (!traveling) {
@@ -127,17 +128,18 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         traveling = true
                     }
 
+
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && shouldBreak) {
-                        mineBlock(BlockPos(x, 255, z), true)
                         broken = true;
                         traveling = false
+                        mineBlock(BlockPos(x, 255, z), true)
+
                     }
 
-                    if (mc.player.world.getBlockState(BlockPos(x, 255, z)).block != Blocks.AIR){
-                        mineBlock(BlockPos(x, 255, z), false)
-                    }
 
-                } else {
+                } else{
+                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel clear")
+
                     state = 0
                 }
             }
@@ -146,26 +148,11 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     private fun SafeClientEvent.mineBlock(pos: BlockPos, pre: Boolean) {
 
-        val center = pos.toVec3dCenter()
-        val diff = player.getPositionEyes(1.0f).subtract(center)
-        val normalizedVec = diff.normalize()
-        val blockState = world.getBlockState(pos)
+        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel 1 $x 255 $z")
+        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel 2 $x 255 $z")
 
-        val ticksNeeded = ceil(((1 / (blockState.getPlayerRelativeBlockHardness(player, world, pos))).toDouble())).toInt()
-        val side = EnumFacing.getFacingFromVector(normalizedVec.x.toFloat(), normalizedVec.y.toFloat(), normalizedVec.z.toFloat())
+        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel replace stone air")
 
-        lastHitVec = center
-
-        if (pre) {
-            connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, pos, side))
-        }
-
-        if (miningTimer.tick(ticksNeeded, true)) {
-            connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, pos, side))
-        }
-
-        connection.sendPacket(CPacketAnimation(EnumHand.MAIN_HAND))
-        player.swingArm(EnumHand.MAIN_HAND)
     }
 }
 
