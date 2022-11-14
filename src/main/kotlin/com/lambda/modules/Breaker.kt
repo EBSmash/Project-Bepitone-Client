@@ -2,19 +2,16 @@ package com.lambda.modules
 
 import baritone.api.BaritoneAPI
 import com.lambda.ExamplePlugin
-import com.lambda.client.event.SafeClientEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
 import com.lambda.client.util.TickTimer
 import com.lambda.client.util.TimeUnit
-import com.lambda.client.util.math.VectorUtils.toVec3dCenter
+import com.lambda.client.util.Timer
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.init.Blocks
-import net.minecraft.network.play.client.CPacketAnimation
 import net.minecraft.network.play.client.CPacketPlayerDigging
 import net.minecraft.util.EnumFacing
-import net.minecraft.util.EnumHand
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Vec3d
 import net.minecraftforge.fml.common.gameevent.TickEvent
@@ -22,18 +19,16 @@ import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
 import java.lang.Integer.parseInt
-import java.lang.Math.ceil
 import java.net.ConnectException
 import java.net.URL
 import java.util.*
-import javax.xml.ws.http.HTTPException
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
     var queue: Queue<String> = PriorityQueue<String>()
     var list: ArrayList<String> = ArrayList()
 
-    private val miningTimer = TickTimer(TimeUnit.TICKS)
+    private val miningTimer = TickTimer(TimeUnit.MILLISECONDS)
 
     private var lastHitVec: Vec3d? = null
 
@@ -41,6 +36,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     var z = 0
 
     var traveling = false
+
+    var baritonePaused = false
 
     var shouldBreak = false
 
@@ -130,15 +127,22 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && shouldBreak) {
-                        broken = true;
-                        traveling = false
-                        mineBlock(BlockPos(x, 255, z), true)
-
+                        if (baritonePaused){
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("pause")
+                            connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, BlockPos(x, 255, z), EnumFacing.DOWN))
+                            baritonePaused = false;
+                        }
+                        if (miningTimer.tick(2600)) {
+                            connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, BlockPos(x, 255, z), EnumFacing.DOWN))
+                            broken = true;
+                            traveling = false
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("resume")
+                            baritonePaused = true
+                        }
                     }
 
 
                 } else{
-                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel clear")
 
                     state = 0
                 }
@@ -146,13 +150,5 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
         }
     }
 
-    private fun SafeClientEvent.mineBlock(pos: BlockPos, pre: Boolean) {
-
-        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel 1 $x 255 $z")
-        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel 2 $x 255 $z")
-
-        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel replace stone air")
-
-    }
 }
 

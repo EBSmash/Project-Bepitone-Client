@@ -1,9 +1,9 @@
 {
-  "name": "Bepatone",
+  "name": "Bepitone",
   "version": "${version}",
   "description": "bep bep bep bep",
-  "url": "https://github.com/lambda-client/ExamplePlugin",
-  "authors": [ "me", "you" ],
+  "url": "",
+  "authors": [ "EBS", "DanDucky" ],
   "main_class": "com.lambda.ExamplePlugin",
   "min_api_version": "3.2",
   "required_plugins": []
