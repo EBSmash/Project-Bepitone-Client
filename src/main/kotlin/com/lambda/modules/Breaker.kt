@@ -4,13 +4,10 @@ import baritone.api.BaritoneAPI
 import com.lambda.ExamplePlugin
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
-import com.lambda.client.util.TickTimer
-import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.network.play.client.CPacketPlayerDigging
 import net.minecraft.util.EnumFacing
-import net.minecraft.util.EnumHand
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
@@ -19,9 +16,7 @@ import java.io.InputStreamReader
 import java.lang.Integer.parseInt
 import java.net.ConnectException
 import java.net.URL
-import java.util.LinkedList
-import java.util.Queue
-import kotlin.collections.LinkedHashSet
+import java.util.*
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
@@ -29,10 +24,14 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     private var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet();
 
-    private var hasInitialized = false
+    private var breaking = true
+
+    private var done = true
 
     var x = 0
     var z = 0
+
+    private var posList: LinkedHashSet<BlockPos> = LinkedHashSet()
 
     private var busy = false;
 
@@ -40,13 +39,15 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var state: State = State.ASSIGN
 
-    private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
+    var threadstate = ""
 
-    var timer: TickTimer = TickTimer(TimeUnit.MILLISECONDS)
+    var pos: BlockPos = BlockPos(0, 0, 0)
 
     private val server by setting("Bepitone API Server IP", "Unchanged")
 
     init {
+
+        var thread = Thread()
 
         onEnable {
             state = State.ASSIGN;
@@ -55,6 +56,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
         }
 
         safeListener<TickEvent.ClientTickEvent> {
+
+
             when (state) {
 
                 State.ASSIGN -> {
@@ -102,6 +105,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
 
                 State.TRAVEL -> {
+
+
                     if (queue.isEmpty()) {
                         state = State.ASSIGN
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
@@ -114,58 +119,52 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 }
 
                 State.BREAK -> {
-                    if (!busy) {
-                        threeCoord = queue.poll()
-                        if (threeCoord.isEmpty()) {
-                            MessageSendHelper.sendChatMessage("empty")
+                    if (breaking) {
+                        breaking = false
+                        thread = Thread({
+                            done = false
+                            Companion.mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, pos, EnumFacing.UP))
+                            MessageSendHelper.sendChatMessage("Starting Break")
 
-                            state = State.ASSIGN
-                            return@safeListener
-                        }
-
-                        for (coord in threeCoord) {
-
-                            mc.player.swingArm(EnumHand.MAIN_HAND)
-
-                            x = coord.x
-                            z = coord.z
-
-                            mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, coord, EnumFacing.UP))
-
-                            if (timer.tick(1500)) {
-                                mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, coord, EnumFacing.UP))
+                            try {
+                                Thread.sleep(2000)
+                                Companion.mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, pos, EnumFacing.UP))
+                                MessageSendHelper.sendChatMessage("Attempted Break")
+                            } catch (ignored: InterruptedException) {
                             }
-
-
-                        }
-                        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $x 256 $z")
-
-                        if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                            busy = true
-                        }
-
-                    } else {
-                        state = State.TRAVEL
-
+                        }, "bepitone-waiter")
                     }
 
+                    if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
+                        while (queue.isNotEmpty()) {
+                            if (!thread.isAlive) {
+                                posList = queue.poll()
+                            }
+                            for (newPos in posList) {
+                                if (thread.state.name == "TERMINATED") {
+                                    thread.start()
+                                    breaking = false
+                                    pos = newPos
+                                }
+                            }
+                        }
+                    }
+                    if (queue.isEmpty()) {
+                        if (thread.state.name == "TERMINATED") {
+                            breaking = false
+                            MessageSendHelper.sendChatMessage("Moving up")
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${pos.x} 256 ${pos.z - 2}")
+//                            state = State.TRAVEL
+                        }
+                    }
+                    threadstate=thread.state.name
                 }
             }
         }
     }
-
-
-    fun notBusy(): Boolean {
-        var notBusy = !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive
-
-        if (timer.tick(150)) {
-            notBusy = !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive
-        }
-        return notBusy
-    }
 }
 
 
-enum class State() {
+enum class State {
     ASSIGN, TRAVEL, BREAK
 }
