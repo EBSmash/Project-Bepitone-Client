@@ -1,20 +1,12 @@
 package com.lambda.modules
 
 import baritone.api.BaritoneAPI
-import baritone.api.pathing.goals.Goal
-import baritone.api.pathing.goals.GoalGetToBlock
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
-import com.lambda.client.util.TickTimer
-import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
-import jdk.nashorn.internal.ir.Block
-import net.minecraft.network.play.client.CPacketPlayerDigging
-import net.minecraft.util.EnumFacing
-import net.minecraft.util.EnumHand
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
@@ -31,22 +23,21 @@ import kotlin.collections.LinkedHashSet
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
     var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
 
-
-    private var hasInitialized = false
-
-    var finishedMine = true;
-    var stepCounter = 0
+    var breakCounter = 0
     var x = 0
     var z = 0
-
+    var file = 0
     private var busy = false
     private var empty = false;
+
+    var fileFirstLine = true
+
+    val xOffset = 0
+    val zOffset = 0
 
     var state: State = State.ASSIGN
 
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
-
-    var timer: TickTimer = TickTimer(TimeUnit.MILLISECONDS)
 
     private val server by setting("Bepitone API Server IP", "Unchanged")
 
@@ -57,6 +48,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             busy = false
             empty = false
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
+            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
         }
 
         safeListener<TickEvent.ClientTickEvent> {
@@ -64,38 +56,35 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
                 State.ASSIGN -> {
                     try {
-                        print("DEWYYYY")
                         val url = URL("http://2.tcp.ngrok.io:12956/assign")
                         val connection = url.openConnection()
                         queue.clear()
                         BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
+                            file++
                             var line: String?
                             //for each line
+                            fileFirstLine = true
                             while (inp.readLine().also { line = it } != null) {
-
-                                if (line.toString() == "") {
-                                    return@use
-
+                                if (fileFirstLine) {
+                                    fileFirstLine = false
+                                    file = line.toString().toInt()
                                 } else {
-                                    var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
-                                    //17 142
-                                    for (coordSet in line.toString().split("#")) {
-                                        //17
-                                        x = parseInt(coordSet.split(" ")[0])
-                                        //142
-                                        z = parseInt(coordSet.split(" ")[1])
-                                        //{{BlockPos(17,142)}, {BlockPos(17 141)},{BlockPos(17 140)}}
-                                        threeTemp.add(BlockPos(x, 255, z))
+                                    if (line.toString() == "") {
+                                        return@use
+
+                                    } else {
+                                        var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
+                                        for (coordSet in line.toString().split("#")) {
+                                            x = parseInt(coordSet.split(" ")[0])
+                                            z = parseInt(coordSet.split(" ")[1])
+                                            threeTemp.add(BlockPos(x, 255, z))
+                                        }
+                                        queue.add(threeTemp)
                                     }
-//                                    MessageSendHelper.sendChatMessage(threeTemp.toString())
-                                    //{{{BlockPos(17,142)}, {BlockPos(17 141)},{BlockPos(17 140)}}}
-                                    queue.add(threeTemp)
                                 }
                             }
                             state = State.TRAVEL
                         }
-
-
                     } catch (_: ConnectException) {
                         MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
                         disable()
@@ -113,46 +102,29 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     }
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
                         MessageSendHelper.sendChatMessage("Traveling")
-                        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $x 256 ${z - 2}")
                         state = State.BREAK
                     }
                 }
 
                 State.BREAK -> {
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                        if (stepCounter == 0) {
+                        if (breakCounter == 0) {
                             if (queue.isEmpty()) {
-                                MessageSendHelper.sendChatMessage("empty")
                                 state = State.TRAVEL
                                 return@safeListener
                             }
                             threeCoord = queue.poll()
-                            MessageSendHelper.sendChatMessage(threeCoord.toString() + " THREE COORD")
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
-                            var gotoX = 0
-                            var gotoZ = 0
                             for (coord in threeCoord) {
-                                MessageSendHelper.sendChatMessage("little dewy gumped")
-//                            mc.player.swingArm(EnumHand.MAIN_HAND)
-
-                                val sel: BetterBlockPos = BetterBlockPos(coord.x, 255, coord.z);
-                                gotoX = coord.x
-                                gotoZ = coord.z
-//                            mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, coord, EnumFacing.UP))
-//
-//                            if (timer.tick(1500)) {
-//                                mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, coord, EnumFacing.UP))
-//                            }
+                                val sel = BetterBlockPos(coord.x, 255, coord.z)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
+                                z = coord.z
                             }
-//                            val gotoBlock:BlockPos = BlockPos(gotoX, 256, gotoZ)
-//                            val goto:GoalGetToBlock = GoalGetToBlock(gotoBlock)
-//                            BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.setGoalAndPath(goto)
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $gotoX 256 $gotoZ")
-                            stepCounter++
-                        } else if (stepCounter == 1) {
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file*5)} 256 ${z + negPosCheck(file)}")
+                            breakCounter++
+                        } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            stepCounter = 0
+                            breakCounter = 0
                         }
                     }
                 }
@@ -163,4 +135,10 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
 enum class State() {
     ASSIGN, TRAVEL, BREAK
+}
+fun negPosCheck (fileNum:Int):Int {
+    if (fileNum%2 == 0) {
+        return 1
+    }
+    return -1
 }
