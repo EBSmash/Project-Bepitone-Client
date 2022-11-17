@@ -4,7 +4,7 @@ import com.lambda.ExamplePlugin
 import com.lambda.client.event.SafeClientEvent
 import com.lambda.client.plugin.api.PluginLabelHud
 import com.lambda.modules.Breaker
-import com.lambda.modules.Breaker.pos
+//import com.lambda.modules.Breaker.pos
 import com.lambda.modules.Breaker.x
 import com.lambda.modules.Breaker.z
 
@@ -18,7 +18,7 @@ internal object StatusHud : PluginLabelHud(
     override fun SafeClientEvent.updateText() {
         displayText.addLine(Breaker.state.toString())
         displayText.addLine("Going to $x $z", secondaryColor)
-        displayText.addLine("Target: $pos")
-        displayText.addLine("Thread State: ${Breaker.threadstate}")
+//        displayText.addLine("Target: $pos")
+//        displayText.addLine("Thread State: ${Breaker.threadstate}")
     }
 }
