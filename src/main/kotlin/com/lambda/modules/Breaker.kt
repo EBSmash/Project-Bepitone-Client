@@ -27,6 +27,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     var x = 0
     var z = 0
     var file = 0
+    var fileNameFull = ""
     private var busy = false
     private var empty = false;
 
@@ -67,7 +68,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             while (inp.readLine().also { line = it } != null) {
                                 if (fileFirstLine) {
                                     fileFirstLine = false
-                                    file = line.toString().toInt()
+                                    file = line.toString().split(".")[0].toInt()
+                                    fileNameFull = line.toString()
                                 } else {
                                     if (line.toString() == "") {
                                         return@use
