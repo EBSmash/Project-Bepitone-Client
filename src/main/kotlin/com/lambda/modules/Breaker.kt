@@ -36,6 +36,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     val xOffset = 0
     val zOffset = 0
 
+    var id = "0";
+
     var state: State = State.ASSIGN
 
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
@@ -48,8 +50,23 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             state = State.ASSIGN;
             busy = false
             empty = false
-            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
-            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
+            if (mc.player != null) {
+                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
+                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
+            }
+            try {
+                val url = URL("http://localhost:8000/start")
+                val connection = url.openConnection()
+                BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
+                    id = inp.readLine()
+                }
+            } catch (_: ConnectException) {
+                MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+                disable()
+            } catch (_: IOException) {
+                MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
+                disable()
+            }
         }
 
         safeListener<TickEvent.ClientTickEvent> {
@@ -57,7 +74,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
                 State.ASSIGN -> {
                     try {
-                        val url = URL("http://2.tcp.ngrok.io:12956/assign")
+                        val url = URL("http://localhost:8000/assign/$file")
                         val connection = url.openConnection()
                         queue.clear()
                         BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
@@ -77,8 +94,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                     } else {
                                         var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
                                         for (coordSet in line.toString().split("#")) {
-                                            x = parseInt(coordSet.split(" ")[0])
-                                            z = parseInt(coordSet.split(" ")[1])
+                                            x = parseInt(coordSet.split(" ").get(0))
+                                            z = parseInt(coordSet.split(" ").get(1))
                                             threeTemp.add(BlockPos(x, 255, z))
                                         }
                                         queue.add(threeTemp)
@@ -122,7 +139,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                             }
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file*5)} 256 ${z + negPosCheck(file)}")
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + negPosCheck(file)}")
                             breakCounter++
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
@@ -138,8 +155,9 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 enum class State() {
     ASSIGN, TRAVEL, BREAK
 }
-fun negPosCheck (fileNum:Int):Int {
-    if (fileNum%2 == 0) {
+
+fun negPosCheck(fileNum: Int): Int {
+    if (fileNum % 2 == 0) {
         return 1
     }
     return -1

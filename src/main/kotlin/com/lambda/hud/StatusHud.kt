@@ -18,7 +18,7 @@ internal object StatusHud : PluginLabelHud(
     override fun SafeClientEvent.updateText() {
         displayText.addLine(Breaker.state.toString())
         displayText.addLine("Going to $x $z", secondaryColor)
-//        displayText.addLine("Target: $pos")
+        displayText.addLine("ID: ${Breaker.id}")
 //        displayText.addLine("Thread State: ${Breaker.threadstate}")
     }
 }
