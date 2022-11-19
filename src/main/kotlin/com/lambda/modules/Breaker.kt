@@ -1,225 +1,209 @@
 package com.lambda.modules
 
 import baritone.api.BaritoneAPI
+import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
-import com.lambda.client.manager.managers.PlayerPacketManager.sendPlayerPacket
-import com.lambda.client.mixin.extension.syncCurrentPlayItem
+import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
-import com.lambda.client.util.TickTimer
-import com.lambda.client.util.TimeUnit
-import com.lambda.client.util.items.swapToItem
-import com.lambda.client.util.math.RotationUtils.getRotationTo
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
-import com.lambda.client.util.world.getHitVec
 import net.minecraft.init.Blocks
-import net.minecraft.init.Items
-import net.minecraft.network.play.client.CPacketPlayerDigging
-import net.minecraft.util.EnumFacing
-import net.minecraft.util.EnumHand
 import net.minecraft.util.math.BlockPos
-import net.minecraft.util.math.RayTraceResult
-import net.minecraft.util.math.Vec3d
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
-import java.lang.Double.parseDouble
 import java.lang.Integer.parseInt
 import java.net.ConnectException
+import java.net.HttpURLConnection
 import java.net.URL
-import java.util.*
-import kotlin.collections.ArrayList
+import java.util.LinkedList
+import java.util.Queue
+import kotlin.collections.LinkedHashSet
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
-    var queue: Queue<String> = PriorityQueue<String>()
-    var list: ArrayList<String> = ArrayList()
+    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
 
-    private val miningTimer = TickTimer(TimeUnit.MILLISECONDS)
-
-    private var lastHitVec: Vec3d? = null
-
+    var breakCounter = 0
     var x = 0
     var z = 0
+    var file = 0
+    var fileNameFull = ""
+    private var busy = false
+    private var empty = false;
 
-    var traveling = false
+    var fileFirstLine = true
 
-    var baritonePaused = false
+    val xOffset = 4000
+    val zOffset = 3000
 
-    var shouldBreak = false
+    var id = "0";
 
-    var empty = false;
+    var state: State = State.ASSIGN
 
-    var state = 0
-
-    var broken = true
-
-    val toBreak = ArrayList<BlockPos>()
-
+    private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
 
     private val server by setting("Bepitone API Server IP", "Unchanged")
 
     init {
 
         onEnable {
-            state = 0;
-            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("allowplace false")
+            state = State.ASSIGN;
+            busy = false
+            empty = false
+            if (mc.player != null) {
+                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
+                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
+            }
+            try {
+                val url = URL("http://0.tcp.ngrok.io:12372/start")
+                val connection = url.openConnection()
+                BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
+                    id = inp.readLine()
+                }
+            } catch (_: ConnectException) {
+                MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+                disable()
+            } catch (_: IOException) {
+                MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
+                disable()
+            }
         }
 
         safeListener<TickEvent.ClientTickEvent> {
-            if (state == 0) {
-                //sent get req
-                try {
-                    val url = URL("http://2.tcp.ngrok.io:17605/assign")
-                    val connection = url.openConnection()
-                    BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
-                        var line: String?
-                        //for each line
-                        while (inp.readLine().also { line = it } != null) {
-                            //debug print
-//                        MessageSendHelper.sendChatMessage(line.toString())
+            when (state) {
 
-                            if (line.toString() == "") {
-                                empty = true;
-                                break
-                            } else {
-                                empty = false;
-                            }
+                State.ASSIGN -> {
+                    try {
+                        val url = URL("http://0.tcp.ngrok.io:12372/assign/$file")
+                        val connection = url.openConnection()
+                        queue.clear()
+                        BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
+                            file++
+                            var line: String?
+                            //for each line
+                            fileFirstLine = true
+                            while (inp.readLine().also { line = it } != null) {
+                                if (fileFirstLine) {
+                                    fileFirstLine = false
+                                    file = line.toString().split(".")[0].toInt()
+                                    fileNameFull = line.toString()
+                                } else {
+                                    if (line.toString() == "") {
+                                        return@use
 
-                            if (!empty) {
-                                queue.add(line.toString())
-                            }
-                        }
-                        if (empty) {
-                            state = 0
-                            return@safeListener
-                        } else {
-                            state = 1
-                        }
-                    }
-                } catch (_: ConnectException) {
-                    MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
-                    disable()
-                } catch (_: IOException) {
-                    MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD.")
-                    disable()
-                }
-            }
-
-            if (state == 1) {
-                if (!queue.isEmpty()) {
-
-
-                    if (broken) {
-                        var line = queue.poll();
-
-                        if (line == null) {
-                            state = 0
-                            return@safeListener
-                        }
-
-                        val list = line.split("#")
-
-                        val coord1 = BlockPos(parseInt(list[0].split(" ")[0]), 255, parseInt(list[0].split(" ")[1]))
-                        val coord2 = BlockPos(parseInt(list[1].split(" ")[0]), 255, parseInt(list[1].split(" ")[1]))
-                        val coord3 = BlockPos(parseInt(list[2].split(" ")[0]), 255, parseInt(list[2].split(" ")[1]))
-
-                        x = coord2.x
-                        z = coord2.z
-
-                        toBreak
-
-                        broken = false;
-                    }
-                    if (mc.world.getBlockState(BlockPos(x, 255, z).south()).block == Blocks.AIR) {
-                        shouldBreak = false;
-                        traveling = true;
-                        broken = true
-                    } else {
-                        shouldBreak = true;
-                    }
-
-
-                    //goto thingy
-                    if (!traveling) {
-                        BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${x+3} 256 ${z + 1}")
-                        traveling = true
-                    }
-
-                    for (pos in toBreak) {
-                        if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && shouldBreak) {
-                            swapToItem(Items.DIAMOND_PICKAXE)
-
-                            if (baritonePaused) {
-                                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("pause")
-                                baritonePaused = false;
-                            }
-                            lastHitVec = getHitVec(pos, EnumFacing.UP)
-
-                            val rotation = lastHitVec?.let { getRotationTo(it) }
-                            if (rotation != null) {
-                                sendPlayerPacket {
-                                    rotate(rotation)
-                                }
-                            }
-                            mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.START_DESTROY_BLOCK, pos, EnumFacing.UP))
-
-                            if (miningTimer.tick(10)) {
-                                lastHitVec = getHitVec(pos, EnumFacing.UP)
-
-                                val rotation = lastHitVec?.let { getRotationTo(it) }
-                                if (rotation != null) {
-                                    sendPlayerPacket {
-                                        rotate(rotation)
+                                    } else {
+                                        var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
+                                        for (coordSet in line.toString().split("#")) {
+                                            x = parseInt(coordSet.split(" ").get(0))
+                                            z = parseInt(coordSet.split(" ").get(1))
+                                            threeTemp.add(BlockPos(x, 255, z))
+                                        }
+                                        queue.add(threeTemp)
                                     }
                                 }
-
-                                mc.player.connection.sendPacket(CPacketPlayerDigging(CPacketPlayerDigging.Action.STOP_DESTROY_BLOCK, pos, EnumFacing.UP))
-
-                                broken = true;
-                                traveling = false
-                                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("resume")
-                                baritonePaused = true
                             }
+                            state = State.TRAVEL
                         }
+                    } catch (_: ConnectException) {
+                        MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+                        disable()
+                    } catch (_: IOException) {
+                        MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
+                        disable()
+                    }
+                }
+
+
+                State.TRAVEL -> {
+                    if (queue.isEmpty()) {
+                        state = State.ASSIGN
+                        MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
                     }
 
-                } else {
-                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel clear")
-                    state = 0
+                    if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
+                        MessageSendHelper.sendChatMessage("Traveling")
+                        state = State.BREAK
+                    }
+                }
+
+                State.BREAK -> {
+                    if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
+                        if (breakCounter == 0) {
+                            if (queue.isEmpty()) {
+                                state = State.TRAVEL
+                                return@safeListener
+                            }
+                            threeCoord = queue.poll()
+                            BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
+                            for (coord in threeCoord) {
+//                                if (mc.world.getBlockState(coord.down()).block == Blocks.AIR) {
+//                                    break
+//                                }
+                                val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
+                                z = coord.z
+                            }
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
+
+                            breakCounter++
+                        } else if (breakCounter == 1) {
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+                            breakCounter = 0
+                        }
+                    }
                 }
             }
         }
-    }
 
-    var didBreakLastTick = false
+        safeListener<ConnectionEvent.Disconnect> {
+            try {
+                println("Running bepatone shutdown hook")
 
-    fun stopBreakingBlock() {
-        mc.playerController.resetBlockRemoving()
-        didBreakLastTick = false
-    }
+                val url = URL("http://0.tcp.ngrok.io:12372/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}")
 
-    fun tick(isLeftClick: Boolean) {
-        val trace: RayTraceResult = mc.objectMouseOver
-        val isBlockTrace = trace.typeOfHit == RayTraceResult.Type.BLOCK
-        if (isLeftClick && isBlockTrace) {
-            if (!didBreakLastTick) {
-                mc.playerController.syncCurrentPlayItem()
-                mc.playerController.clickBlock(trace.blockPos, trace.sideHit)
-                mc.player.swingArm(EnumHand.MAIN_HAND)
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+
+                }
+
+            } catch (e: Exception) {
+                println("Running bepatone shutdown hook failed")
+
             }
+        }
+        onDisable {
+            try {
+                println("Running bepatone shutdown hook")
 
-            // Attempt to break the block
-            if (mc.playerController.onPlayerDamageBlock(trace.blockPos, trace.sideHit)) {
-                mc.player.swingArm(EnumHand.MAIN_HAND)
+                val url = URL("http://0.tcp.ngrok.io:12372/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+
+                }
+
+            } catch (e: Exception) {
+                println("Running bepatone shutdown hook failed")
+
             }
-            didBreakLastTick = true
-        } else if (didBreakLastTick) {
-            stopBreakingBlock()
-            didBreakLastTick = false
         }
     }
 }
 
+enum class State() {
+    ASSIGN, TRAVEL, BREAK
+}
+
+fun negPosCheck(fileNum: Int): Int {
+    if (fileNum % 2 == 0) {
+        return 1
+    }
+    return -1
+}
