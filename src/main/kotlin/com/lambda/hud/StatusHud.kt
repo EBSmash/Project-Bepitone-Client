@@ -11,14 +11,16 @@ import com.lambda.modules.Breaker.z
 internal object StatusHud : PluginLabelHud(
     name = "BepitoneStatus",
     category = Category.MISC,
-    description = "Simple hud example",
+    description = "bep bep bep hud",
     pluginMain = ExamplePlugin
 ) {
 
     override fun SafeClientEvent.updateText() {
-        displayText.addLine(Breaker.state.toString())
+        displayText.addLine("State : ${Breaker.state}" )
         displayText.addLine("Going to $x $z", secondaryColor)
-        displayText.addLine("ID: ${Breaker.id}")
-//        displayText.addLine("Thread State: ${Breaker.threadstate}")
+        displayText.addLine("ID: ${Breaker.id}", secondaryColor)
+        displayText.addLine("Account: ${Breaker.username}", secondaryColor)
+        displayText.addLine("Blocks Broken This session: ${Breaker.blocks_broken}", secondaryColor)
+
     }
 }

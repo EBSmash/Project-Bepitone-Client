@@ -20,26 +20,6 @@ internal object ExamplePlugin : Plugin() {
         hudElements.add(StatusHud)
 
 
-        safeListener<ShutdownEvent> {
-            try {
-                println("Running bepatone shutdown hook")
-
-                val url = URL("http://localhost:8000/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}}")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
-
-                }
-
-            } catch (e: Exception) {
-                println("Running bepatone shutdown hook failed")
-
-            }
-        }
-
-
     }
 
 }
