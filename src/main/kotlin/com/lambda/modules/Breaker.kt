@@ -12,6 +12,7 @@ import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.init.Blocks
 import net.minecraft.util.math.BlockPos
+import net.minecraftforge.fml.common.gameevent.PlayerEvent
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
@@ -28,7 +29,7 @@ import kotlin.collections.LinkedHashSet
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
     var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
 
-    var blocks_broken = 0;
+    var blocks_broken = 0
 
     var breakCounter = 0
     var x = 0
@@ -36,7 +37,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     var file = 0
     var fileNameFull = ""
     private var busy = false
-    private var empty = false;
+    private var empty = false
 
     var fileFirstLine = true
 
@@ -45,8 +46,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var username = "";
 
-    private val url by setting("Server IP", "localhost")
-    private val port by setting("Server Port", "8000")
+    private val url by setting("Server IP", "4.tcp.ngrok.io")
+    private val port by setting("Server Port", "10215")
 
     var id = "0";
 
@@ -79,7 +80,11 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
                 disable()
             }
-
+            if (mc.player.posZ > 0) {
+                file = 0
+            } else {
+                file = 1
+            }
             username = mc.player.displayNameString
         }
 
@@ -92,7 +97,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         val connection = url.openConnection()
                         queue.clear()
                         BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
-                            file++
                             var line: String?
                             //for each line
                             fileFirstLine = true
@@ -100,6 +104,11 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 if (fileFirstLine) {
                                     fileFirstLine = false
                                     fileNameFull = line.toString()
+                                    if (fileNameFull.contains(".")) {
+                                        file = fileNameFull.split(".")[0].toInt()
+                                    } else {
+                                        file = fileNameFull.toInt()
+                                    }
                                 } else {
                                     if (line.toString() == "") {
                                         return@use
@@ -155,6 +164,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
+                                x = coord.x
                             }
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
 
@@ -179,13 +189,15 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     }
                 }
             }
+            if (player.posY < 200) { // if player falls
+                disable() // should run onDisable{}
+            }
         }
-
         safeListener<ConnectionEvent.Disconnect> {
             try {
                 println("Running bepatone shutdown hook")
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posZ.toInt()}/${Breaker.z}/$username")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -205,7 +217,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             if (mc.player == entity) {
                 if (it.progress == 9) {
                     try {
-                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posZ.toInt()}/${Breaker.z}/$username")
+                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
 
                         with(url.openConnection() as HttpURLConnection) {
                             requestMethod = "GET"  // optional default is GET
@@ -218,8 +230,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         println("Running bepatone shutdown hook failed")
 
                     }
-
-
                     blocks_broken++
                 }
             }
@@ -229,7 +239,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             try {
                 println("Running bepatone shutdown hook")
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posZ.toInt()}/${Breaker.z}/${username}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${0}/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -240,7 +250,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
-
             }
         }
     }
