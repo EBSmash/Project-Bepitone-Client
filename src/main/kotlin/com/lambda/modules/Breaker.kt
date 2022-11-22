@@ -39,6 +39,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     private var busy = false
     private var empty = false
 
+    var exitCoord = -20
+
     var fileFirstLine = true
 
     val xOffset = 0
@@ -196,16 +198,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
         safeListener<ConnectionEvent.Disconnect> {
             try {
                 println("Running bepatone shutdown hook")
-
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-
-                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-
-                }
-
+                exitCoord = 0
+                disable()
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
 
@@ -238,8 +232,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
         onDisable {
             try {
                 println("Running bepatone shutdown hook")
-
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${0}/${Breaker.z}/${username}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() - exitCoord}/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -247,7 +240,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
 
                 }
-
+                exitCoord = -20
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
             }
