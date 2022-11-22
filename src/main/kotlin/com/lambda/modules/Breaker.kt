@@ -7,6 +7,7 @@ import com.lambda.client.event.events.BlockBreakEvent
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
+import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.init.Blocks
@@ -44,7 +45,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var username = "";
 
-    private val url by setting("Server IP", "127.0.0.1")
+    private val url by setting("Server IP", "localhost")
     private val port by setting("Server Port", "8000")
 
     var id = "0";
@@ -98,7 +99,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             while (inp.readLine().also { line = it } != null) {
                                 if (fileFirstLine) {
                                     fileFirstLine = false
-                                    file = line.toString().split(".")[0].toInt()
                                     fileNameFull = line.toString()
                                 } else {
                                     if (line.toString() == "") {
@@ -185,7 +185,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             try {
                 println("Running bepatone shutdown hook")
 
-                val url = URL("http://$url:$port/dc/${Breaker.file}/${Breaker.x}/${Breaker.z}/$username")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posZ.toInt()}/${Breaker.z}/$username")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -205,7 +205,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             if (mc.player == entity) {
                 if (it.progress == 9) {
                     try {
-                        val url = URL("http://$url:$port/dc/${Breaker.file}/${Breaker.x}/${Breaker.z}/$username")
+                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posZ.toInt()}/${Breaker.z}/$username")
 
                         with(url.openConnection() as HttpURLConnection) {
                             requestMethod = "GET"  // optional default is GET
@@ -229,7 +229,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             try {
                 println("Running bepatone shutdown hook")
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posZ.toInt()}/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
