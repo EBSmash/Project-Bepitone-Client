@@ -154,7 +154,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 tempX = coord.x
                                 tempZ = coord.z
                             }
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $tempX 256 $tempZ")
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${tempX + xOffset} 256 ${tempZ + zOffset}")
                         }
                     }
                 }
@@ -229,7 +229,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 println(mc.player.posY.toInt().toString())
                 println(exitCoord)
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x + xOffset}/${mc.player.posY.toInt() + exitCoord}/${Breaker.z + zOffset}/${username}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() + exitCoord}/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
