@@ -50,8 +50,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var username = "";
 
-    private val url by setting("Server IP", "3.142.81.166")
-    private val port by setting("Server Port", "11052")
+    private val url by setting("Server IP", "3.22.30.40")
+    private val port by setting("Server Port", "19439")
 
     var id = "0";
 
@@ -66,10 +66,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             state = State.ASSIGN;
             busy = false
             empty = false
-            if (mc.player != null) {
-                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
-                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
-            }
+
             try {
                 val url = URL("http://$url:$port/start")
                 MessageSendHelper.sendChatMessage(url.toString())
@@ -175,6 +172,21 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 //                                if (mc.world.getBlockState(coord.down()).block == Blocks.AIR) {
 //                                    break
 //                                }
+
+//                                try {
+//                                    println("Running bepatone shutdown hook")
+//                                    val url = URL("https://ad3c-2600-3c02-00-f03c-93ff-fe0c-c02d.ngrok.io?x=${coord.x}&z=${coord.z}")
+//
+//                                    with(url.openConnection() as HttpURLConnection) {
+//                                        requestMethod = "GET"  // optional default is GET
+//
+//                                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+//
+//                                    }
+//                                    exitCoord = -20
+//                                } catch (e: Exception) {
+//                                    println("Running bepatone shutdown hook failed")
+//                                }
                                 val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
@@ -210,31 +222,14 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             }
         }
 
-        safeListener<BlockBreakEvent> {
-            val entity = world.getEntityByID(it.breakerID) ?: return@safeListener
-            if (mc.player == entity) {
-                    try {
-                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
-
-                        with(url.openConnection() as HttpURLConnection) {
-                            requestMethod = "GET"  // optional default is GET
-
-                            println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-
-                        }
-
-                    } catch (e: Exception) {
-                        println("Running bepatone shutdown hook failed")
-
-                    }
-                    blocks_broken++
-                }
-        }
-
         onDisable {
             try {
                 println("Running bepatone shutdown hook")
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() - exitCoord}/${Breaker.z}/${username}")
+
+                println(mc.player.posY.toInt().toString())
+                println(exitCoord)
+
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x + xOffset}/${mc.player.posY.toInt() + exitCoord}/${Breaker.z + zOffset}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
