@@ -48,8 +48,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var username = "";
 
-    private val url by setting("Server IP", "4.tcp.ngrok.io")
-    private val port by setting("Server Port", "10215")
+    private val url by setting("Server IP", "3.142.81.166")
+    private val port by setting("Server Port", "11052")
 
     var id = "0";
 
@@ -209,7 +209,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
         safeListener<BlockBreakEvent> {
             val entity = world.getEntityByID(it.breakerID) ?: return@safeListener
             if (mc.player == entity) {
-                if (it.progress == 9) {
                     try {
                         val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
 
@@ -226,7 +225,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     }
                     blocks_broken++
                 }
-            }
         }
 
         onDisable {
