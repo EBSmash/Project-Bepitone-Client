@@ -43,8 +43,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var fileFirstLine = true
 
-    val xOffset = 0
-    val zOffset = 0
+    val xOffset = -5000
+    val zOffset = -5000
 
     var username = "";
 
