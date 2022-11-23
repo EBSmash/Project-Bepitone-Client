@@ -31,6 +31,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var blocks_broken = 0
 
+    var delay = 0
+
     var breakCounter = 0
     var x = 0
     var z = 0
@@ -147,6 +149,16 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
                         MessageSendHelper.sendChatMessage("Traveling")
                         state = State.BREAK
+                        if (fileNameFull.contains(".failed")) {
+                            var temp = queue.last()
+                            var tempX = 0
+                            var tempZ = 0
+                            for (coord in temp) {
+                                tempX = coord.x
+                                tempZ = coord.z
+                            }
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $tempX 256 $tempZ")
+                        }
                     }
                 }
 
@@ -173,21 +185,13 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             breakCounter++
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+                            breakCounter++
+                        } else if (breakCounter == 2 && delay != 10) {
+                            delay += 1
+                        } else {
+                            delay = 0
                             breakCounter = 0
                         }
-//                        } else if (breakCounter == 2) {
-//                            for (pos in BaritoneAPI.getProvider().primaryBaritone.selectionManager.selections) {
-//                                for (x in pos.pos1().x..pos.pos2().x) {
-//                                    for (y in pos.pos1().y..pos.pos2().y) {
-//                                        val selPos = BlockPos(x, 255, y)
-//                                        if (mc.world.getBlockState(selPos).block == Blocks.AIR) {
-//                                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-//                                        }
-//                                    }
-//                                }
-//                            }
-//                            breakCounter = 0
-//                        }
                     }
                 }
             }
