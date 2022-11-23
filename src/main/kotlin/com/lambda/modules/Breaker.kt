@@ -3,13 +3,16 @@ package com.lambda.modules
 import baritone.api.BaritoneAPI
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
+import com.lambda.client.event.events.BlockBreakEvent
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
+import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.init.Blocks
 import net.minecraft.util.math.BlockPos
+import net.minecraftforge.fml.common.gameevent.PlayerEvent
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
@@ -26,18 +29,27 @@ import kotlin.collections.LinkedHashSet
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
     var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
 
+    var blocks_broken = 0
+
     var breakCounter = 0
     var x = 0
     var z = 0
     var file = 0
     var fileNameFull = ""
     private var busy = false
-    private var empty = false;
+    private var empty = false
+
+    var exitCoord = -20
 
     var fileFirstLine = true
 
-    val xOffset = 4000
-    val zOffset = 3000
+    val xOffset = 0
+    val zOffset = 0
+
+    var username = "";
+
+    private val url by setting("Server IP", "3.142.81.166")
+    private val port by setting("Server Port", "11052")
 
     var id = "0";
 
@@ -45,7 +57,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
 
-    private val server by setting("Bepitone API Server IP", "Unchanged")
 
     init {
 
@@ -58,7 +69,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
             }
             try {
-                val url = URL("http://0.tcp.ngrok.io:12372/start")
+                val url = URL("http://$url:$port/start")
+                MessageSendHelper.sendChatMessage(url.toString())
                 val connection = url.openConnection()
                 BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                     id = inp.readLine()
@@ -70,6 +82,12 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
                 disable()
             }
+            if (mc.player.posZ > 0) {
+                file = 0
+            } else {
+                file = 1
+            }
+            username = mc.player.displayNameString
         }
 
         safeListener<TickEvent.ClientTickEvent> {
@@ -77,19 +95,22 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
                 State.ASSIGN -> {
                     try {
-                        val url = URL("http://0.tcp.ngrok.io:12372/assign/$file")
+                        val url = URL("http://$url:$port/assign/$file/$username")
                         val connection = url.openConnection()
                         queue.clear()
                         BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
-                            file++
                             var line: String?
                             //for each line
                             fileFirstLine = true
                             while (inp.readLine().also { line = it } != null) {
                                 if (fileFirstLine) {
                                     fileFirstLine = false
-                                    file = line.toString().split(".")[0].toInt()
                                     fileNameFull = line.toString()
+                                    if (fileNameFull.contains(".")) {
+                                        file = fileNameFull.split(".")[0].toInt()
+                                    } else {
+                                        file = fileNameFull.toInt()
+                                    }
                                 } else {
                                     if (line.toString() == "") {
                                         return@use
@@ -145,6 +166,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
+                                x = coord.x
                             }
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
 
@@ -153,45 +175,72 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter = 0
                         }
+//                        } else if (breakCounter == 2) {
+//                            for (pos in BaritoneAPI.getProvider().primaryBaritone.selectionManager.selections) {
+//                                for (x in pos.pos1().x..pos.pos2().x) {
+//                                    for (y in pos.pos1().y..pos.pos2().y) {
+//                                        val selPos = BlockPos(x, 255, y)
+//                                        if (mc.world.getBlockState(selPos).block == Blocks.AIR) {
+//                                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            breakCounter = 0
+//                        }
                     }
                 }
             }
+            if (player.posY < 200) { // if player falls
+                disable() // should run onDisable{}
+            }
         }
-
         safeListener<ConnectionEvent.Disconnect> {
             try {
                 println("Running bepatone shutdown hook")
-
-                val url = URL("http://0.tcp.ngrok.io:12372/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
-
-                }
-
+                exitCoord = 0
+                disable()
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
 
             }
         }
+
+        safeListener<BlockBreakEvent> {
+            val entity = world.getEntityByID(it.breakerID) ?: return@safeListener
+            if (mc.player == entity) {
+                    try {
+                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
+
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
+
+                            println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+
+                        }
+
+                    } catch (e: Exception) {
+                        println("Running bepatone shutdown hook failed")
+
+                    }
+                    blocks_broken++
+                }
+        }
+
         onDisable {
             try {
                 println("Running bepatone shutdown hook")
-
-                val url = URL("http://0.tcp.ngrok.io:12372/fail/${Breaker.file}/${Breaker.x}/${Breaker.z}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() - exitCoord}/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
 
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
 
                 }
-
+                exitCoord = -20
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
-
             }
         }
     }
