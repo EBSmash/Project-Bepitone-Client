@@ -7,6 +7,8 @@ import com.lambda.client.event.events.BlockBreakEvent
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
+import com.lambda.client.util.TickTimer
+import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
@@ -53,7 +55,11 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     private val url by setting("Server IP", "3.22.30.40")
     private val port by setting("Server Port", "19439")
 
+    private var timer = TickTimer(TimeUnit.MILLISECONDS)
+
     var id = "0";
+
+    private var sel = BetterBlockPos(0,0,0);
 
     var state: State = State.ASSIGN
 
@@ -187,7 +193,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 //                                } catch (e: Exception) {
 //                                    println("Running bepatone shutdown hook failed")
 //                                }
-                                val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
@@ -201,6 +207,9 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         } else if (breakCounter == 2 && delay != 10) {
                             delay += 1
                         } else {
+                            BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+
                             delay = 0
                             breakCounter = 0
                         }
