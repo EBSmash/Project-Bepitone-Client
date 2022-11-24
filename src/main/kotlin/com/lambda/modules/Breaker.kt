@@ -204,15 +204,16 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter++
-                        } else if (breakCounter == 2 && delay != 10) {
-                            delay += 1
-                        } else {
+                        } else if (breakCounter == 2) {
+                            breakCounter = 0
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-
-                            delay = 0
-                            breakCounter = 0
                         }
+//                        } else {
+//
+//                            delay = 0
+//                            breakCounter = 0
+//                        }
                     }
                 }
             }
