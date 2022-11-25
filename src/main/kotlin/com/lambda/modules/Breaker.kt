@@ -62,8 +62,9 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     private var sel = BetterBlockPos(0,0,0);
 
     var state: State = State.ASSIGN
-
+    var firstBlock  = true
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
+    private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
 
 
     init {
@@ -162,6 +163,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                             }
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${tempX + xOffset} 256 ${tempZ + zOffset}")
                         }
+                        selections.clear()
+                        firstBlock = true
                     }
                 }
 
@@ -173,8 +176,22 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 return@safeListener
                             }
                             threeCoord = queue.poll()
+                            if (firstBlock) {
+                                firstBlock = false
+                                selections.add(threeCoord)
+                                selections.add(threeCoord)
+                            } else {
+                                selections[1] = selections[0]
+                                selections[0] = threeCoord
+                            }
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
-                            for (coord in threeCoord) {
+                            for (coord in selections[1]) {
+                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
+                                z = coord.z
+                                x = coord.x
+                            }
+                            for (coord in selections[0]) {
 //                                if (mc.world.getBlockState(coord.down()).block == Blocks.AIR) {
 //                                    break
 //                                }
@@ -204,21 +221,25 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter++
-                        } else if (breakCounter == 2) {
+                        } else if (breakCounter == 2 && delay != 22) {
+                            delay++
+                        } else {
+                            delay = 0
                             breakCounter = 0
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                         }
-//                        } else {
-//
-//                            delay = 0
-//                            breakCounter = 0
-//                        }
                     }
                 }
             }
             if (player.posY < 200) { // if player falls
-                disable() // should run onDisable{}
+                try {
+                    println("Running bepatone shutdown hook")
+                    disable()
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
+
+                }
             }
         }
         safeListener<ConnectionEvent.Disconnect> {
