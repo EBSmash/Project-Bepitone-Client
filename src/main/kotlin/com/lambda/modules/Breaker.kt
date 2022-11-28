@@ -7,9 +7,13 @@ import com.lambda.client.event.events.BlockBreakEvent
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
+import com.lambda.client.util.TickTimer
+import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
+import net.minecraft.block.BlockAir
+import net.minecraft.client.Minecraft
 import net.minecraft.init.Blocks
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.PlayerEvent
@@ -27,9 +31,11 @@ import kotlin.collections.LinkedHashSet
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
-    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
+    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
 
     var blocks_broken = 0
+
+    var delay = 0
 
     var breakCounter = 0
     var x = 0
@@ -48,14 +54,17 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     var username = "";
 
-    private val url by setting("Server IP", "3.142.81.166")
-    private val port by setting("Server Port", "11052")
+    private val url by setting("Server IP", "3.22.30.40")
+    private val port by setting("Server Port", "19439")
 
     var id = "0";
 
-    var state: State = State.ASSIGN
+    private var sel = BetterBlockPos(0,0,0);
 
+    var state: State = State.ASSIGN
+    var firstBlock  = true
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
+    private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
 
 
     init {
@@ -64,10 +73,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             state = State.ASSIGN;
             busy = false
             empty = false
-            if (mc.player != null) {
-                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("breakfromabove true")
-                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("blockreachdistance 2")
-            }
+
             try {
                 val url = URL("http://$url:$port/start")
                 MessageSendHelper.sendChatMessage(url.toString())
@@ -147,6 +153,18 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
                         MessageSendHelper.sendChatMessage("Traveling")
                         state = State.BREAK
+                        if (fileNameFull.contains(".failed")) {
+                            var temp = queue.last()
+                            var tempX = 0
+                            var tempZ = 0
+                            for (coord in temp) {
+                                tempX = coord.x
+                                tempZ = coord.z
+                            }
+                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${tempX + xOffset} 256 ${tempZ + zOffset}")
+                        }
+                        selections.clear()
+                        firstBlock = true
                     }
                 }
 
@@ -158,79 +176,99 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 return@safeListener
                             }
                             threeCoord = queue.poll()
+                            if (firstBlock) {
+                                firstBlock = false
+                                selections.add(threeCoord)
+                                selections.add(threeCoord)
+                            } else {
+                                selections[1] = selections[0]
+                                selections[0] = threeCoord
+                            }
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
-                            for (coord in threeCoord) {
-//                                if (mc.world.getBlockState(coord.down()).block == Blocks.AIR) {
-//                                    break
-//                                }
-                                val sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                            var needToMine = false
+                            for (coord in selections[1]) {
+                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
+                                if (mc.world.getBlockState(BlockPos(x,255,z)).block !is BlockAir) {
+                                    needToMine = true
+                                }
                             }
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
-
+                            for (coord in selections[0]) {
+                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
+                                z = coord.z
+                                x = coord.x
+                                if (mc.world.getBlockState(BlockPos(x,255,z)).block !is BlockAir) {
+                                    needToMine = true
+                                }
+                            }
+                            if (needToMine) {
+                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir) { // thanks leijurv papi
+                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
+                                }
+                            }
                             breakCounter++
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter = 0
                         }
-//                        } else if (breakCounter == 2) {
-//                            for (pos in BaritoneAPI.getProvider().primaryBaritone.selectionManager.selections) {
-//                                for (x in pos.pos1().x..pos.pos2().x) {
-//                                    for (y in pos.pos1().y..pos.pos2().y) {
-//                                        val selPos = BlockPos(x, 255, y)
-//                                        if (mc.world.getBlockState(selPos).block == Blocks.AIR) {
-//                                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-//                                        }
-//                                    }
-//                                }
-//                            }
+//                        } else if (breakCounter == 2 && delay != 22) {
+//                            delay++
+//                        } else {
+//                            delay = 0
 //                            breakCounter = 0
+//                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
 //                        }
+                    }
+                }
+                State.QUEUE -> {
+                    // await joining server
+                    val mc = Minecraft.getMinecraft()
+                    val data = mc.currentServerData
+                    if (data != null) {
+                        if (data.serverIP.lowercase().equals("connect.2b2t.org") && mc.player.dimension == 0) {
+                            state = State.ASSIGN
+                        }
                     }
                 }
             }
             if (player.posY < 200) { // if player falls
-                disable() // should run onDisable{}
+                try {
+                    println("Running bepatone shutdown hook")
+                    disable() // does this run the disable shutdown hook or not? idk if it's been working correctly
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
+                }
             }
         }
         safeListener<ConnectionEvent.Disconnect> {
+            state = State.QUEUE
             try {
                 println("Running bepatone shutdown hook")
-                exitCoord = 0
-                disable()
+
+                println(mc.player.posY.toInt().toString())
+                println(exitCoord)
+
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt()}/${Breaker.z}/${username}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                }
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
-
             }
-        }
-
-        safeListener<BlockBreakEvent> {
-            val entity = world.getEntityByID(it.breakerID) ?: return@safeListener
-            if (mc.player == entity) {
-                    try {
-                        val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${player.posY.toInt()}/${Breaker.z}/$username")
-
-                        with(url.openConnection() as HttpURLConnection) {
-                            requestMethod = "GET"  // optional default is GET
-
-                            println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-
-                        }
-
-                    } catch (e: Exception) {
-                        println("Running bepatone shutdown hook failed")
-
-                    }
-                    blocks_broken++
-                }
         }
 
         onDisable {
             try {
                 println("Running bepatone shutdown hook")
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() - exitCoord}/${Breaker.z}/${username}")
+
+                println(mc.player.posY.toInt().toString())
+
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -238,7 +276,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
 
                 }
-                exitCoord = -20
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
             }
@@ -247,7 +284,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 }
 
 enum class State() {
-    ASSIGN, TRAVEL, BREAK
+    ASSIGN, TRAVEL, BREAK, QUEUE
 }
 
 fun negPosCheck(fileNum: Int): Int {
