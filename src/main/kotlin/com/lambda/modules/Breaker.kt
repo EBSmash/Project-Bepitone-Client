@@ -12,6 +12,8 @@ import com.lambda.client.util.TimeUnit
 import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
+import net.minecraft.block.BlockAir
+import net.minecraft.client.Minecraft
 import net.minecraft.init.Blocks
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.PlayerEvent
@@ -54,8 +56,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 
     private val url by setting("Server IP", "3.22.30.40")
     private val port by setting("Server Port", "19439")
-
-    private var timer = TickTimer(TimeUnit.MILLISECONDS)
 
     var id = "0";
 
@@ -185,49 +185,51 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 selections[0] = threeCoord
                             }
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
+                            var needToMine = false
                             for (coord in selections[1]) {
                                 sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
+                                if (mc.world.getBlockState(BlockPos(x,255,z)).block !is BlockAir) {
+                                    needToMine = true
+                                }
                             }
                             for (coord in selections[0]) {
-//                                if (mc.world.getBlockState(coord.down()).block == Blocks.AIR) {
-//                                    break
-//                                }
-
-//                                try {
-//                                    println("Running bepatone shutdown hook")
-//                                    val url = URL("https://ad3c-2600-3c02-00-f03c-93ff-fe0c-c02d.ngrok.io?x=${coord.x}&z=${coord.z}")
-//
-//                                    with(url.openConnection() as HttpURLConnection) {
-//                                        requestMethod = "GET"  // optional default is GET
-//
-//                                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-//
-//                                    }
-//                                    exitCoord = -20
-//                                } catch (e: Exception) {
-//                                    println("Running bepatone shutdown hook failed")
-//                                }
                                 sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
+                                if (mc.world.getBlockState(BlockPos(x,255,z)).block !is BlockAir) {
+                                    needToMine = true
+                                }
                             }
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
-
+                            if (needToMine) {
+                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir) { // thanks leijurv papi
+                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
+                                }
+                            }
                             breakCounter++
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            breakCounter++
-                        } else if (breakCounter == 2 && delay != 22) {
-                            delay++
-                        } else {
-                            delay = 0
                             breakCounter = 0
-                            BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+                        }
+//                        } else if (breakCounter == 2 && delay != 22) {
+//                            delay++
+//                        } else {
+//                            delay = 0
+//                            breakCounter = 0
+//                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+//                        }
+                    }
+                }
+                State.QUEUE -> {
+                    // await joining server
+                    val mc = Minecraft.getMinecraft()
+                    val data = mc.currentServerData
+                    if (data != null) {
+                        if (data.serverIP.lowercase().equals("connect.2b2t.org") && mc.player.dimension == 0) {
+                            state = State.ASSIGN
                         }
                     }
                 }
@@ -235,21 +237,28 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             if (player.posY < 200) { // if player falls
                 try {
                     println("Running bepatone shutdown hook")
-                    disable()
+                    disable() // does this run the disable shutdown hook or not? idk if it's been working correctly
                 } catch (e: Exception) {
                     println("Running bepatone shutdown hook failed")
-
                 }
             }
         }
         safeListener<ConnectionEvent.Disconnect> {
+            state = State.QUEUE
             try {
                 println("Running bepatone shutdown hook")
-                exitCoord = 0
-                disable()
+
+                println(mc.player.posY.toInt().toString())
+                println(exitCoord)
+
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt()}/${Breaker.z}/${username}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                }
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
-
             }
         }
 
@@ -258,9 +267,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 println("Running bepatone shutdown hook")
 
                 println(mc.player.posY.toInt().toString())
-                println(exitCoord)
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/${mc.player.posY.toInt() + exitCoord}/${Breaker.z}/${username}")
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
@@ -268,7 +276,6 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
 
                 }
-                exitCoord = -20
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
             }
@@ -277,7 +284,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
 }
 
 enum class State() {
-    ASSIGN, TRAVEL, BREAK
+    ASSIGN, TRAVEL, BREAK, QUEUE
 }
 
 fun negPosCheck(fileNum: Int): Int {
