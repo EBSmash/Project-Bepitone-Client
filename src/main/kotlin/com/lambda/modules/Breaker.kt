@@ -31,7 +31,7 @@ import kotlin.collections.LinkedHashSet
 
 
 internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
-    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList()
+    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
 
     var blocks_broken = 0
 
