@@ -36,6 +36,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
     var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
 
     var blocks_broken = 0
+    var brokenBlocksBuf = 0
 
     var delay = 0
     var delayReconnect = 0
@@ -103,12 +104,11 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             // Disconnect
             val mc = Minecraft.getMinecraft()
             val data = mc.currentServerData
-            if (data == null && state != State.QUEUE) {
+            if (data == null && state != State.QUEUE) { // should only run once
+                println("DISCONNECT DETECTED")
                 state = State.QUEUE
                 try {
                     println("Running bepatone shutdown hook")
-
-//                    println(mc.player.posY.toInt().toString())
                     println(exitCoord)
 
                     val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
@@ -196,6 +196,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                 State.BREAK -> {
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
                         if (breakCounter == 0) {
+                            blocks_broken+=brokenBlocksBuf
+                            brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
                                 state = State.TRAVEL
                                 return@safeListener
@@ -228,6 +230,7 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block !is BlockAir) {
                                     MessageSendHelper.sendChatMessage("bep")
                                     needToMine = true
+                                    brokenBlocksBuf++
                                 }
                             }
                             MessageSendHelper.sendChatMessage(needToMine.toString())

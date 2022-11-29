@@ -16,11 +16,16 @@ internal object StatusHud : PluginLabelHud(
 ) {
 
     override fun SafeClientEvent.updateText() {
-        displayText.addLine("State : ${Breaker.state}" )
-        displayText.addLine("Going to $x $z", secondaryColor)
-        displayText.addLine("ID: ${Breaker.id}", secondaryColor)
+        displayText.addLine("State: ${Breaker.state}" )
+        displayText.addLine("Currently Working on Line: ${Breaker.file}")
+        displayText.addLine("Going to ${2 + (Breaker.xOffset + Breaker.file * 5)} ${z + Breaker.zOffset + negPosCheck(Breaker.file)}", secondaryColor)
         displayText.addLine("Account: ${Breaker.username}", secondaryColor)
         displayText.addLine("Blocks Broken This session: ${Breaker.blocks_broken}", secondaryColor)
-
+    }
+    fun negPosCheck(fileNum: Int): Int {
+        if (fileNum % 2 == 0) {
+            return 1
+        }
+        return -1
     }
 }
