@@ -3,23 +3,20 @@ package com.lambda.modules
 import baritone.api.BaritoneAPI
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
-import com.lambda.client.event.events.BlockBreakEvent
-import com.lambda.client.event.events.ConnectionEvent
+import com.lambda.client.event.events.GuiEvent
+import com.lambda.client.event.listener.listener
+import com.lambda.client.gui.mc.LambdaGuiDisconnected
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
-import com.lambda.client.util.TickTimer
-import com.lambda.client.util.TimeUnit
-import com.lambda.client.util.Wrapper.world
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.block.BlockAir
-import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
-import net.minecraft.init.Blocks
+import net.minecraft.client.gui.GuiDisconnected
+import net.minecraft.client.multiplayer.GuiConnecting
+import net.minecraft.client.multiplayer.ServerData
 import net.minecraft.util.math.BlockPos
-import net.minecraftforge.fml.common.gameevent.PlayerEvent
 import net.minecraftforge.fml.common.gameevent.TickEvent
-import net.minecraftforge.fml.common.network.FMLNetworkEvent.ClientDisconnectionFromServerEvent
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -32,46 +29,50 @@ import java.util.Queue
 import kotlin.collections.LinkedHashSet
 
 
-internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Category.MISC, description = "", pluginMain = ExamplePlugin) {
-    var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
-
+internal object Breaker : PluginModule(
+        name = "BepitoneBreaker",
+        category = Category.MISC,
+        description = "",
+        pluginMain = ExamplePlugin
+    ) {
+    private var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
     var blocks_broken = 0
-    var brokenBlocksBuf = 0
+    private var brokenBlocksBuf = 0
 
-    var delay = 0
-    var delayReconnect = 0
-    var breakCounter = 0
+    private var delay = 0
+    private var loadChunkCount = 15
+    private var delayReconnect = 0
+    private var breakCounter = 0
     var x = 0
     var z = 0
     var file = 0
-    var fileNameFull = ""
+    private var fileNameFull = ""
     private var busy = false
     private var empty = false
 
-    var exitCoord = -20
+    private var exitCoord = -20
 
-    var fileFirstLine = true
+    private var fileFirstLine = true
+    const val xOffset = -5000
+    const val zOffset = -5000
 
-    val xOffset = -5000
-    val zOffset = -5000
-
-    var username = "";
+    var username = ""
 
     private val url by setting("Server IP", "2.tcp.ngrok.io")
     private val port by setting("Server Port", "10696")
 
-    var id = "0";
+    private var id = "0"
 
-    private var sel = BetterBlockPos(0,0,0);
+    private var sel = BetterBlockPos(0,0,0)
 
     var state: State = State.ASSIGN
-    var firstBlock  = true
-    private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet();
+    private var firstBlock  = true
+    private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
+    private var prevServerDate: ServerData? = null
 
 
     init {
-
         onEnable {
             state = State.ASSIGN;
             busy = false
@@ -99,12 +100,27 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             username = mc.player.displayNameString
         }
 
-        safeListener<TickEvent.ClientTickEvent> {
+        safeListener<GuiEvent.Closed> {
+            if (it.screen is GuiConnecting) prevServerDate = mc.currentServerData
+        }
 
+        safeListener<GuiEvent.Displayed> {
+            print("in the listener")
+            if (isDisabled || (prevServerDate == null && mc.currentServerData == null)) return@safeListener
+            (it.screen as? GuiDisconnected)?.let { gui ->
+                if (state != State.QUEUE) {
+                    print("oOWOWOWOOWOOWOWOOWOOWOWOOWO")
+                }
+                print("Disconnect detected")
+            }
+        }
+        safeListener<TickEvent.ClientTickEvent> {
+            username = mc.player.displayNameString
             // Disconnect
             val mc = Minecraft.getMinecraft()
             val data = mc.currentServerData
-            if (data == null && state != State.QUEUE) { // should only run once
+            println(data.toString())
+            if (state != State.QUEUE && mc.player.dimension == 1) { // should only run once
                 println("DISCONNECT DETECTED")
                 state = State.QUEUE
                 try {
@@ -125,6 +141,8 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             when (state) {
 
                 State.ASSIGN -> {
+                    delay = 0
+                    loadChunkCount = 15
                     try {
                         val url = URL("http://$url:$port/assign/$file/$username")
                         val connection = url.openConnection()
@@ -176,10 +194,9 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     }
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
-                        MessageSendHelper.sendChatMessage("Traveling")
                         state = State.BREAK
                         if (fileNameFull.contains(".failed")) {
-                            var temp = queue.last()
+                            val temp = queue.last()
                             var tempX = 0
                             var tempZ = 0
                             for (coord in temp) {
@@ -228,19 +245,20 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                                 z = coord.z
                                 x = coord.x
                                 if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block !is BlockAir) {
-                                    MessageSendHelper.sendChatMessage("bep")
                                     needToMine = true
                                     brokenBlocksBuf++
                                 }
                             }
-                            MessageSendHelper.sendChatMessage(needToMine.toString())
                             breakCounter++
                             if (needToMine) {
                                 if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir) { // thanks leijurv papi
                                     BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
                                 }
-                            } else {
+                            } else if (loadChunkCount != 15){
+                                loadChunkCount++
                                 breakCounter = 0
+                            } else {
+                                loadChunkCount = 0
                             }
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
@@ -255,20 +273,17 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
                     }
                 }
                 State.QUEUE -> {
-                    // await joining server
-                    if (data != null) {
-                        if (mc.player.dimension == 0 && delayReconnect != 20) {
-                            delayReconnect++
-                        } else if (mc.player.dimension == 0 && delayReconnect == 20) {
-                            state = State.ASSIGN
-                            delayReconnect = 0
-                        }
+                // await joining server
+                    if (mc.player.dimension == 0 && delayReconnect != 20) {
+                        delayReconnect++
+                    } else if (mc.player.dimension == 0 && delayReconnect == 20) {
+                        state = State.ASSIGN
+                        delayReconnect = 0
                     }
                 }
             }
 
-            if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL)) { // if player falls
-                MessageSendHelper.sendChatMessage("dis you paper?")
+            if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL) && mc.player.dimension == 0) { // if player falls
                 try {
                     println("Running bepatone shutdown hook")
                     disable() // does this run the disable shutdown hook or not? idk if it's been working correctly
@@ -297,15 +312,14 @@ internal object Breaker : PluginModule(name = "BepitoneBreaker", category = Cate
             }
         }
     }
-}
-
-enum class State() {
-    ASSIGN, TRAVEL, BREAK, QUEUE
-}
-
-fun negPosCheck(fileNum: Int): Int {
-    if (fileNum % 2 == 0) {
-        return 1
+    enum class State() {
+        ASSIGN, TRAVEL, BREAK, QUEUE
     }
-    return -1
+
+    private fun negPosCheck(fileNum: Int): Int {
+        if (fileNum % 2 == 0) {
+            return 1
+        }
+        return -1
+    }
 }

@@ -22,7 +22,7 @@ internal object StatusHud : PluginLabelHud(
         displayText.addLine("Account: ${Breaker.username}", secondaryColor)
         displayText.addLine("Blocks Broken This session: ${Breaker.blocks_broken}", secondaryColor)
     }
-    fun negPosCheck(fileNum: Int): Int {
+    private fun negPosCheck(fileNum: Int): Int {
         if (fileNum % 2 == 0) {
             return 1
         }
