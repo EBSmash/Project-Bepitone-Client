@@ -3,20 +3,24 @@ package com.lambda.modules
 import baritone.api.BaritoneAPI
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
+import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.event.events.GuiEvent
 import com.lambda.client.event.listener.listener
 import com.lambda.client.gui.mc.LambdaGuiDisconnected
 import com.lambda.client.module.Category
+import com.lambda.client.module.modules.misc.AutoReconnect
 import com.lambda.client.plugin.api.PluginModule
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.block.BlockAir
+import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.client.multiplayer.GuiConnecting
 import net.minecraft.client.multiplayer.ServerData
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
+import net.minecraftforge.fml.common.network.FMLNetworkEvent.ClientDisconnectionFromServerEvent
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -100,28 +104,8 @@ internal object Breaker : PluginModule(
             username = mc.player.displayNameString
         }
 
-        safeListener<GuiEvent.Closed> {
-            if (it.screen is GuiConnecting) prevServerDate = mc.currentServerData
-        }
-
-        safeListener<GuiEvent.Displayed> {
-            print("in the listener")
-            if (isDisabled || (prevServerDate == null && mc.currentServerData == null)) return@safeListener
-            (it.screen as? GuiDisconnected)?.let { gui ->
-                if (state != State.QUEUE) {
-                    print("oOWOWOWOOWOOWOWOOWOOWOWOOWO")
-                }
-                print("Disconnect detected")
-            }
-        }
-        safeListener<TickEvent.ClientTickEvent> {
-            username = mc.player.displayNameString
-            // Disconnect
-            val mc = Minecraft.getMinecraft()
-            val data = mc.currentServerData
-            println(data.toString())
-            if (state != State.QUEUE && mc.player.dimension == 1) { // should only run once
-                println("DISCONNECT DETECTED")
+        listener<ConnectionEvent.Disconnect> {
+            if (state != State.QUEUE) {
                 state = State.QUEUE
                 try {
                     println("Running bepatone shutdown hook")
@@ -137,15 +121,24 @@ internal object Breaker : PluginModule(
                     println("Running bepatone shutdown hook failed")
                 }
             }
+        }
+        safeListener<TickEvent.ClientTickEvent> {
+            username = mc.player.displayNameString
+            // Disconnect
+            val mc = Minecraft.getMinecraft()
 
             when (state) {
 
                 State.ASSIGN -> {
                     delay = 0
+                    delayReconnect = 0
                     loadChunkCount = 15
                     try {
                         val url = URL("http://$url:$port/assign/$file/$username")
                         val connection = url.openConnection()
+                        var firstX = 0
+                        var firstZ = 0
+                        var firstData = true
                         queue.clear()
                         BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                             var line: String?
@@ -165,16 +158,23 @@ internal object Breaker : PluginModule(
                                         return@use
 
                                     } else {
-                                        var threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
+                                        val threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
                                         for (coordSet in line.toString().split("#")) {
                                             x = parseInt(coordSet.split(" ").get(0))
                                             z = parseInt(coordSet.split(" ").get(1))
                                             threeTemp.add(BlockPos(x, 255, z))
+                                            if (firstData) {
+                                                firstData = false
+                                                firstX = x
+                                                firstZ = z
+                                            }
                                         }
                                         queue.add(threeTemp)
                                     }
                                 }
                             }
+                            x = firstX // jfc never do this again
+                            z = firstZ
                             state = State.TRAVEL
                         }
                     } catch (_: ConnectException) {
@@ -214,6 +214,16 @@ internal object Breaker : PluginModule(
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
                         if (breakCounter == 0) {
                             blocks_broken+=brokenBlocksBuf
+                            try {
+                                val url = URL("http://$url:$port/leaderboard/${username}/${brokenBlocksBuf}")
+
+                                with(url.openConnection() as HttpURLConnection) {
+                                    requestMethod = "GET"  // optional default is GET
+                                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                                }
+                            } catch (e: Exception) {
+                                println("Running bepatone update leaderboard hook failed")
+                            }
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
                                 state = State.TRAVEL
@@ -235,7 +245,7 @@ internal object Breaker : PluginModule(
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
-                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block !is BlockAir) {
+                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block is BlockObsidian) {
                                     needToMine = true
                                 }
                             }
@@ -244,7 +254,7 @@ internal object Breaker : PluginModule(
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
                                 x = coord.x
-                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block !is BlockAir) {
+                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block is BlockObsidian) {
                                     needToMine = true
                                     brokenBlocksBuf++
                                 }
@@ -293,13 +303,14 @@ internal object Breaker : PluginModule(
             }
         }
         onDisable {
+            state = State.ASSIGN
             try {
                 println("Running bepatone shutdown hook")
 
                 println(mc.player.posY.toInt().toString())
                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
+                val url = URL("http://$url:$port/fail/${file}/${x}/256/${z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
