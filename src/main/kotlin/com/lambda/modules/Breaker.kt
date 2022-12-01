@@ -120,6 +120,17 @@ internal object Breaker : PluginModule(
                 } catch (e: Exception) {
                     println("Running bepatone shutdown hook failed")
                 }
+                try {
+                    val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone update leaderboard hook failed")
+                }
+                blocks_broken = 0
             }
         }
         safeListener<TickEvent.ClientTickEvent> {
@@ -214,16 +225,6 @@ internal object Breaker : PluginModule(
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
                         if (breakCounter == 0) {
                             blocks_broken+=brokenBlocksBuf
-                            try {
-                                val url = URL("http://$url:$port/leaderboard/${username}/${brokenBlocksBuf}")
-
-                                with(url.openConnection() as HttpURLConnection) {
-                                    requestMethod = "GET"  // optional default is GET
-                                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-                                }
-                            } catch (e: Exception) {
-                                println("Running bepatone update leaderboard hook failed")
-                            }
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
                                 state = State.TRAVEL
@@ -321,6 +322,17 @@ internal object Breaker : PluginModule(
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
             }
+            try {
+                val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                }
+            } catch (e: Exception) {
+                println("Running bepatone update leaderboard hook failed")
+            }
+            blocks_broken = 0
         }
     }
     enum class State() {
