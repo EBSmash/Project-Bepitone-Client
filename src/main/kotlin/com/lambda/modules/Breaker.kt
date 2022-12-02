@@ -136,9 +136,35 @@ internal object Breaker : PluginModule(
         }
         safeListener<TickEvent.ClientTickEvent> {
             username = mc.player.displayNameString
-            // Disconnect
             val mc = Minecraft.getMinecraft()
+            if (mc.player.dimension == 1 && state != State.QUEUE) {
+                delayReconnect = 0
+                state = State.QUEUE
+                try {
+                    println("Running bepatone shutdown hook")
+                    println(exitCoord)
 
+                    val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
+                }
+                try {
+                    val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone update leaderboard hook failed")
+                }
+                blocks_broken = 0
+            }
             when (state) {
 
                 State.ASSIGN -> {
