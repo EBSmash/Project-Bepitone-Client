@@ -106,6 +106,7 @@ internal object Breaker : PluginModule(
 
         listener<ConnectionEvent.Disconnect> {
             if (state != State.QUEUE) {
+                delayReconnect = 0
                 state = State.QUEUE
                 try {
                     println("Running bepatone shutdown hook")
@@ -142,7 +143,6 @@ internal object Breaker : PluginModule(
 
                 State.ASSIGN -> {
                     delay = 0
-                    delayReconnect = 0
                     loadChunkCount = 15
                     try {
                         val url = URL("http://$url:$port/assign/$file/$username")
@@ -285,9 +285,9 @@ internal object Breaker : PluginModule(
                 }
                 State.QUEUE -> {
                 // await joining server
-                    if (mc.player.dimension == 0 && delayReconnect != 20) {
+                    if (mc.player.dimension == 0 && delayReconnect != 100) {
                         delayReconnect++
-                    } else if (mc.player.dimension == 0 && delayReconnect == 20) {
+                    } else if (mc.player.dimension == 0 && delayReconnect == 100) {
                         state = State.ASSIGN
                         delayReconnect = 0
                     }
