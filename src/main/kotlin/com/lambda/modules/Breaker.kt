@@ -6,9 +6,7 @@ import com.lambda.ExamplePlugin
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.event.events.GuiEvent
 import com.lambda.client.event.listener.listener
-import com.lambda.client.gui.mc.LambdaGuiDisconnected
 import com.lambda.client.module.Category
-import com.lambda.client.module.modules.misc.AutoReconnect
 import com.lambda.client.plugin.api.PluginModule
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
@@ -16,11 +14,9 @@ import net.minecraft.block.BlockAir
 import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
-import net.minecraft.client.multiplayer.GuiConnecting
 import net.minecraft.client.multiplayer.ServerData
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
-import net.minecraftforge.fml.common.network.FMLNetworkEvent.ClientDisconnectionFromServerEvent
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -62,11 +58,11 @@ internal object Breaker : PluginModule(
 
     var username = ""
 
-    private val url by setting("Server IP", "2.tcp.ngrok.io")
-    private val port by setting("Server Port", "10696")
+    private val url by setting("Server IP", "4.tcp.ngrok.io")
+    private val port by setting("Server Port", "13882")
 
     private var id = "0"
-
+    private var runShutdownOnDisable = true
     private var sel = BetterBlockPos(0,0,0)
 
     var state: State = State.ASSIGN
@@ -103,67 +99,25 @@ internal object Breaker : PluginModule(
             }
             username = mc.player.displayNameString
         }
-
+        val networkListener = Minecraft.getMinecraft().connection
+        networkListener?.networkManager?.channel()?.closeFuture()?.addListener{
+            disconnectHook()
+        }
         listener<ConnectionEvent.Disconnect> {
-            if (state != State.QUEUE) {
-                delayReconnect = 0
-                state = State.QUEUE
-                try {
-                    println("Running bepatone shutdown hook")
-                    println(exitCoord)
+            disconnectHook()
+        }
 
-                    val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
-
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-                    }
-                } catch (e: Exception) {
-                    println("Running bepatone shutdown hook failed")
-                }
-                try {
-                    val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
-
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-                    }
-                } catch (e: Exception) {
-                    println("Running bepatone update leaderboard hook failed")
-                }
-                blocks_broken = 0
+        listener<GuiEvent.Displayed> {
+            (it.screen as? GuiDisconnected)?.let { gui ->
+                disconnectHook()
             }
         }
         safeListener<TickEvent.ClientTickEvent> {
+
             username = mc.player.displayNameString
             val mc = Minecraft.getMinecraft()
-            if (mc.player.dimension == 1 && state != State.QUEUE) {
-                delayReconnect = 0
-                state = State.QUEUE
-                try {
-                    println("Running bepatone shutdown hook")
-                    println(exitCoord)
-
-                    val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
-
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-                    }
-                } catch (e: Exception) {
-                    println("Running bepatone shutdown hook failed")
-                }
-                try {
-                    val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
-
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-                    }
-                } catch (e: Exception) {
-                    println("Running bepatone update leaderboard hook failed")
-                }
-                blocks_broken = 0
+            if (mc.player.dimension == 1) {
+                disconnectHook()
             }
             when (state) {
 
@@ -311,19 +265,25 @@ internal object Breaker : PluginModule(
                 }
                 State.QUEUE -> {
                 // await joining server
-                    if (mc.player.dimension == 0 && delayReconnect != 100) {
-                        delayReconnect++
-                    } else if (mc.player.dimension == 0 && delayReconnect == 100) {
-                        state = State.ASSIGN
-                        delayReconnect = 0
+                    val server = Minecraft.getMinecraft().currentServerData;
+                    if (server != null) {
+                        if (mc.player.dimension == 0 && delayReconnect != 100 && server.serverIP.equals("2b2t.org")) {
+                            delayReconnect++
+                        } else if (mc.player.dimension == 0 && delayReconnect == 100 && server.serverIP.equals("2b2t.org")) {
+                            state = State.ASSIGN
+                            delayReconnect = 0
+                        }
+                        if (!server.serverIP.contains("2b2t")) {
+                            runShutdownOnDisable = false
+                            disable()
+                        }
                     }
                 }
             }
-
             if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL) && mc.player.dimension == 0) { // if player falls
                 try {
                     println("Running bepatone shutdown hook")
-                    disable() // does this run the disable shutdown hook or not? idk if it's been working correctly
+                    disable()
                 } catch (e: Exception) {
                     println("Running bepatone shutdown hook failed")
                 }
@@ -331,23 +291,24 @@ internal object Breaker : PluginModule(
         }
         onDisable {
             state = State.ASSIGN
-            try {
-                println("Running bepatone shutdown hook")
+            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
+            if (runShutdownOnDisable) {
+                try {
+                    println("Running bepatone shutdown hook")
 
-                println(mc.player.posY.toInt().toString())
-                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
+                    val url = URL("http://$url:$port/fail/${file}/${x}/256/${z}/${username}")
 
-                val url = URL("http://$url:$port/fail/${file}/${x}/256/${z}/${username}")
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
 
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
 
-                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
-
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
                 }
-            } catch (e: Exception) {
-                println("Running bepatone shutdown hook failed")
             }
+            runShutdownOnDisable = true
             try {
                 val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
 
@@ -370,5 +331,35 @@ internal object Breaker : PluginModule(
             return 1
         }
         return -1
+    }
+    private fun disconnectHook() {
+        if (state != State.QUEUE) {
+            delayReconnect = 0
+            state = State.QUEUE
+            try {
+                println("Running bepatone shutdown hook")
+                println(exitCoord)
+
+                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                }
+            } catch (e: Exception) {
+                println("Running bepatone shutdown hook failed")
+            }
+            try {
+                val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                }
+            } catch (e: Exception) {
+                println("Running bepatone update leaderboard hook failed")
+            }
+            blocks_broken = 0
+        }
     }
 }
