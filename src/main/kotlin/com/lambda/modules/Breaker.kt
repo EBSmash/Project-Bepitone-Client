@@ -58,8 +58,8 @@ internal object Breaker : PluginModule(
 
     var username = ""
 
-    private val url by setting("Server IP", "4.tcp.ngrok.io")
-    private val port by setting("Server Port", "13882")
+    private val url by setting("Server IP", "alightintheendlessvoid.org")
+//    private val port by setting("Server Port", "13882")
 
     private var id = "0"
     private var runShutdownOnDisable = true
@@ -79,7 +79,7 @@ internal object Breaker : PluginModule(
             empty = false
 
             try {
-                val url = URL("http://$url:$port/start")
+                val url = URL("http://$url/start")
                 MessageSendHelper.sendChatMessage(url.toString())
                 val connection = url.openConnection()
                 BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
@@ -125,7 +125,7 @@ internal object Breaker : PluginModule(
                     delay = 0
                     loadChunkCount = 15
                     try {
-                        val url = URL("http://$url:$port/assign/$file/$username")
+                        val url = URL("http://$url/assign/$file/$username")
                         val connection = url.openConnection()
                         var firstX = 0
                         var firstZ = 0
@@ -296,12 +296,12 @@ internal object Breaker : PluginModule(
                 try {
                     println("Running bepatone shutdown hook")
 
-                    val url = URL("http://$url:$port/fail/${file}/${x}/256/${z}/${username}")
+                    val url = URL("http://$url/fail/${file}/${x}/256/${z}/${username}")
 
                     with(url.openConnection() as HttpURLConnection) {
                         requestMethod = "GET"  // optional default is GET
 
-                        println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
 
                     }
                 } catch (e: Exception) {
@@ -310,11 +310,11 @@ internal object Breaker : PluginModule(
             }
             runShutdownOnDisable = true
             try {
-                val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+                val url = URL("http://$url/leaderboard/${username}/${blocks_broken}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
                 }
             } catch (e: Exception) {
                 println("Running bepatone update leaderboard hook failed")
@@ -340,21 +340,21 @@ internal object Breaker : PluginModule(
                 println("Running bepatone shutdown hook")
                 println(exitCoord)
 
-                val url = URL("http://$url:$port/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
+                val url = URL("http://$url/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
                 }
             } catch (e: Exception) {
                 println("Running bepatone shutdown hook failed")
             }
             try {
-                val url = URL("http://$url:$port/leaderboard/${username}/${blocks_broken}")
+                val url = URL("http://$url/leaderboard/${username}/${blocks_broken}")
 
                 with(url.openConnection() as HttpURLConnection) {
                     requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url:$port; Response Code : $responseCode")
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
                 }
             } catch (e: Exception) {
                 println("Running bepatone update leaderboard hook failed")
