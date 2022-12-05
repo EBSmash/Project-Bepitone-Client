@@ -279,9 +279,9 @@ internal object Breaker : PluginModule(
                 // await joining server
                     val server = Minecraft.getMinecraft().currentServerData;
                     if (server != null) {
-                        if (mc.player.dimension == 0 && delayReconnect != 100 && server.serverIP.equals("2b2t.org")) {
+                        if (mc.player.dimension == 0 && delayReconnect != 100 && server.serverIP.contains("2b2t")) {
                             delayReconnect++
-                        } else if (mc.player.dimension == 0 && delayReconnect == 100 && server.serverIP.equals("2b2t.org")) {
+                        } else if (mc.player.dimension == 0 && delayReconnect == 100 && server.serverIP.contains("2b2t")) {
                             state = State.ASSIGN
                             delayReconnect = 0
                         }
