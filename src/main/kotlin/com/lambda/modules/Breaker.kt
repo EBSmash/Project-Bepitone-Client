@@ -151,10 +151,7 @@ internal object Breaker : PluginModule(
             }
             username = mc.player.displayNameString
         }
-        val networkListener = Minecraft.getMinecraft().connection
-        networkListener?.networkManager?.channel()?.closeFuture()?.addListener{
-            disconnectHook()
-        }
+
         listener<ConnectionEvent.Disconnect> {
             disconnectHook()
         }
