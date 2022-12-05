@@ -14,7 +14,6 @@ import net.minecraft.block.BlockAir
 import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
-import net.minecraft.client.multiplayer.ServerData
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
@@ -27,6 +26,7 @@ import java.net.URL
 import java.util.LinkedList
 import java.util.Queue
 import kotlin.collections.LinkedHashSet
+import kotlin.concurrent.thread
 
 
 internal object Breaker : PluginModule(
@@ -50,16 +50,12 @@ internal object Breaker : PluginModule(
     private var busy = false
     private var empty = false
 
-    private var exitCoord = -20
-
-    private var fileFirstLine = true
     const val xOffset = -5000
     const val zOffset = -5000
 
     var username = ""
 
     private val url by setting("Server IP", "alightintheendlessvoid.org")
-//    private val port by setting("Server Port", "13882")
 
     private var id = "0"
     private var runShutdownOnDisable = true
@@ -69,8 +65,64 @@ internal object Breaker : PluginModule(
     private var firstBlock  = true
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
-    private var prevServerDate: ServerData? = null
+    private var finishedWithFile = false
 
+    private fun readFile() {
+        try {
+            val url = URL("http://$url/assign/$file/$username")
+            val connection = url.openConnection()
+            var tempX:Int
+            var tempZ:Int
+            var firstX = 0
+            var firstZ = 0
+            var firstData = true
+            var fileFirstLine = true
+            queue.clear()
+            BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
+                var line: String?
+                //for each line
+                while (inp.readLine().also { line = it } != null) {
+                    if (fileFirstLine) {
+                        fileFirstLine = false
+                        fileNameFull = line.toString()
+                        if (fileNameFull.contains(".")) {
+                            file = fileNameFull.split(".")[0].toInt()
+                        } else {
+                            file = fileNameFull.toInt()
+                        }
+                    } else {
+                        if (line.toString() == "") {
+                            return@use
+
+                        } else {
+                            val threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
+                            for (coordSet in line.toString().split("#")) {
+                                tempX = parseInt(coordSet.split(" ").get(0))
+                                tempZ = parseInt(coordSet.split(" ").get(1))
+                                threeTemp.add(BlockPos(tempX, 255, tempZ))
+                                if (firstData) {
+                                    firstData = false
+                                    firstX = tempX
+                                    firstZ = tempZ
+                                }
+                            }
+                            queue.add(threeTemp)
+                        }
+                    }
+                }
+                x = firstX // jfc never do this again
+                z = firstZ
+                finishedWithFile = true
+            }
+        } catch (_: ConnectException) {
+            MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+            disable()
+        } catch (_: IOException) {
+            MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
+            disable()
+        }
+        finishedWithFile = true
+    }
 
     init {
         onEnable {
@@ -108,15 +160,14 @@ internal object Breaker : PluginModule(
         }
 
         listener<GuiEvent.Displayed> {
-            (it.screen as? GuiDisconnected)?.let { gui ->
+            (it.screen as? GuiDisconnected)?.let {
                 disconnectHook()
             }
         }
         safeListener<TickEvent.ClientTickEvent> {
 
-            username = mc.player.displayNameString
             val mc = Minecraft.getMinecraft()
-            if (mc.player.dimension == 1) {
+            if (mc.player.dimension == 1 && x != 0 && z != 0) {
                 disconnectHook()
             }
             when (state) {
@@ -124,59 +175,20 @@ internal object Breaker : PluginModule(
                 State.ASSIGN -> {
                     delay = 0
                     loadChunkCount = 15
-                    try {
-                        val url = URL("http://$url/assign/$file/$username")
-                        val connection = url.openConnection()
-                        var firstX = 0
-                        var firstZ = 0
-                        var firstData = true
-                        queue.clear()
-                        BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
-                            var line: String?
-                            //for each line
-                            fileFirstLine = true
-                            while (inp.readLine().also { line = it } != null) {
-                                if (fileFirstLine) {
-                                    fileFirstLine = false
-                                    fileNameFull = line.toString()
-                                    if (fileNameFull.contains(".")) {
-                                        file = fileNameFull.split(".")[0].toInt()
-                                    } else {
-                                        file = fileNameFull.toInt()
-                                    }
-                                } else {
-                                    if (line.toString() == "") {
-                                        return@use
-
-                                    } else {
-                                        val threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
-                                        for (coordSet in line.toString().split("#")) {
-                                            x = parseInt(coordSet.split(" ").get(0))
-                                            z = parseInt(coordSet.split(" ").get(1))
-                                            threeTemp.add(BlockPos(x, 255, z))
-                                            if (firstData) {
-                                                firstData = false
-                                                firstX = x
-                                                firstZ = z
-                                            }
-                                        }
-                                        queue.add(threeTemp)
-                                    }
-                                }
-                            }
-                            x = firstX // jfc never do this again
-                            z = firstZ
-                            state = State.TRAVEL
-                        }
-                    } catch (_: ConnectException) {
-                        MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
-                        disable()
-                    } catch (_: IOException) {
-                        MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
-                        disable()
+                    finishedWithFile = false
+                    username = mc.player.displayNameString
+                    thread {
+                        Thread.sleep(100)
+                        readFile()
                     }
+                    state = State.LOAD
                 }
 
+                State.LOAD -> {
+                    if (finishedWithFile) {
+                        state = State.TRAVEL
+                    }
+                }
 
                 State.TRAVEL -> {
                     if (queue.isEmpty()) {
@@ -293,37 +305,47 @@ internal object Breaker : PluginModule(
             state = State.ASSIGN
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
             if (runShutdownOnDisable) {
-                try {
-                    println("Running bepatone shutdown hook")
+                val fileCopy = file
+                val xCopy = x
+                val zCopy = z
+                thread {
+                    Thread.sleep(1000)
+                    try {
+                        println("Running bepatone shutdown hook")
 
-                    val url = URL("http://$url/fail/${file}/${x}/256/${z}/${username}")
+                        val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
 
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
 
-                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
 
+                        }
+                    } catch (e: Exception) {
+                        println("Running bepatone shutdown hook failed")
                     }
-                } catch (e: Exception) {
-                    println("Running bepatone shutdown hook failed")
                 }
             }
             runShutdownOnDisable = true
-            try {
-                val url = URL("http://$url/leaderboard/${username}/${blocks_broken}")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
-                }
-            } catch (e: Exception) {
-                println("Running bepatone update leaderboard hook failed")
-            }
+            val blocksBrokenCopy = blocks_broken
             blocks_broken = 0
+            thread {
+                Thread.sleep(1000)
+                try {
+                    val url = URL("http://$url/leaderboard/${username}/${blocksBrokenCopy}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone update leaderboard hook failed")
+                }
+            }
         }
     }
     enum class State() {
-        ASSIGN, TRAVEL, BREAK, QUEUE
+        ASSIGN, TRAVEL, BREAK, QUEUE, LOAD
     }
 
     private fun negPosCheck(fileNum: Int): Int {
@@ -334,32 +356,39 @@ internal object Breaker : PluginModule(
     }
     private fun disconnectHook() {
         if (state != State.QUEUE) {
+            println("WHAT IS THIS +++++++++++++++++++++++++++++++++++++++++++++++++")
             delayReconnect = 0
             state = State.QUEUE
-            try {
-                println("Running bepatone shutdown hook")
-                println(exitCoord)
-
-                val url = URL("http://$url/fail/${Breaker.file}/${Breaker.x}/256/${Breaker.z}/${username}")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
-                }
-            } catch (e: Exception) {
-                println("Running bepatone shutdown hook failed")
-            }
-            try {
-                val url = URL("http://$url/leaderboard/${username}/${blocks_broken}")
-
-                with(url.openConnection() as HttpURLConnection) {
-                    requestMethod = "GET"  // optional default is GET
-                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
-                }
-            } catch (e: Exception) {
-                println("Running bepatone update leaderboard hook failed")
-            }
+            val fileCopy = file
+            val xCopy = x
+            val zCopy = z
+            val blocksBrokenCopy = blocks_broken
             blocks_broken = 0
+            thread {
+                Thread.sleep(1000)
+                try {
+                    println("Running bepatone shutdown hook")
+
+                    val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
+                }
+                try {
+                    val url = URL("http://$url/leaderboard/${username}/${blocksBrokenCopy}")
+
+                    with(url.openConnection() as HttpURLConnection) {
+                        requestMethod = "GET"  // optional default is GET
+                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                    }
+                } catch (e: Exception) {
+                    println("Running bepatone update leaderboard hook failed")
+                }
+            }
         }
     }
 }

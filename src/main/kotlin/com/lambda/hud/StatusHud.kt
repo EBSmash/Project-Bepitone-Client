@@ -18,10 +18,9 @@ internal object StatusHud : PluginLabelHud(
     override fun SafeClientEvent.updateText() {
         displayText.addLine("State: ${Breaker.state}" )
         displayText.addLine("Currently Working on Line: ${Breaker.file}")
-        displayText.addLine("Going to ${2 + (Breaker.xOffset + Breaker.file * 5)} ${z + Breaker.zOffset + negPosCheck(Breaker.file)}", secondaryColor)
-        displayText.addLine("Account: ${Breaker.username}", secondaryColor)
+        displayText.addLine("Going to ${2 + (Breaker.xOffset + Breaker.file * 5)} ${z + Breaker.zOffset + negPosCheck(Breaker.file)}")
+        displayText.addLine("Account: ${Breaker.username}")
         displayText.addLine("Blocks Broken This session: ${Breaker.blocks_broken}", secondaryColor)
-        displayText.addLine("[DEV] Current Block Goal: ${Breaker.x}, ${Breaker.z}")
     }
     private fun negPosCheck(fileNum: Int): Int {
         if (fileNum % 2 == 0) {
