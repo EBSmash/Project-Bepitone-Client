@@ -23,6 +23,7 @@ import java.lang.Integer.parseInt
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Deque
 import java.util.LinkedList
 import java.util.Queue
 import kotlin.collections.LinkedHashSet
@@ -35,11 +36,12 @@ internal object Breaker : PluginModule(
         description = "",
         pluginMain = ExamplePlugin
     ) {
-    private var queue: Queue<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
+    private var queue: Deque<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
     var blocks_broken = 0
     private var brokenBlocksBuf = 0
-
+    private var failedLayerCounter = 0
     private var delay = 0
+    private var firstLineOfFailedFile : BlockPos = BlockPos(0,0,0)
     private var loadChunkCount = 15
     private var delayReconnect = 0
     private var breakCounter = 0
@@ -49,18 +51,16 @@ internal object Breaker : PluginModule(
     private var fileNameFull = ""
     private var busy = false
     private var empty = false
-
+    private var queueSizeDesired = 0
+    private var failurePosition = 0
+    private var firstJobInLayer = true
     const val xOffset = -5000
     const val zOffset = -5000
-
     var username = ""
-
     private val url by setting("Server IP", "alightintheendlessvoid.org")
-
     private var id = "0"
     private var runShutdownOnDisable = true
     private var sel = BetterBlockPos(0,0,0)
-
     var state: State = State.ASSIGN
     private var firstBlock  = true
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
@@ -70,6 +70,7 @@ internal object Breaker : PluginModule(
     private fun readFile() {
         try {
             val url = URL("http://$url/assign/$file/$username")
+            var queueBuffer : Queue<LinkedHashSet<BlockPos>> = LinkedList()
             val connection = url.openConnection()
             var tempX:Int
             var tempZ:Int
@@ -93,7 +94,6 @@ internal object Breaker : PluginModule(
                     } else {
                         if (line.toString() == "") {
                             return@use
-
                         } else {
                             val threeTemp: LinkedHashSet<BlockPos> = LinkedHashSet()
                             for (coordSet in line.toString().split("#")) {
@@ -106,8 +106,17 @@ internal object Breaker : PluginModule(
                                     firstZ = tempZ
                                 }
                             }
+                            if (fileNameFull.contains(".failed")) {
+                                queueBuffer.add(threeTemp)
+                            }
                             queue.add(threeTemp)
                         }
+                    }
+                }
+                queueSizeDesired = queue.size
+                if (fileNameFull.contains(".failed")) {
+                    while (queueBuffer.isNotEmpty()) {
+                        queue.add(queueBuffer.poll())
                     }
                 }
                 x = firstX // jfc never do this again
@@ -194,19 +203,60 @@ internal object Breaker : PluginModule(
                     }
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
-                        state = State.BREAK
-                        if (fileNameFull.contains(".failed")) {
-                            val temp = queue.last()
-                            var tempX = 0
-                            var tempZ = 0
-                            for (coord in temp) {
-                                tempX = coord.x
-                                tempZ = coord.z
-                            }
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${tempX + xOffset} 256 ${tempZ + zOffset}")
-                        }
                         selections.clear()
                         firstBlock = true
+                        if (fileNameFull.contains(".failed")) {
+                             if (failedLayerCounter == 0) {
+                                 selections.clear()
+                                 val temp = queue.last()
+                                 var tempZ = 0
+                                 var tempX = 0
+                                 for (coord in temp) {
+                                     tempZ = coord.z
+                                     tempX = coord.x
+                                 }
+                                 firstLineOfFailedFile = BlockPos(tempX, 255, tempZ)
+                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${tempZ + zOffset + negPosCheck(file)}")
+                                 failedLayerCounter++
+                             } else if (failedLayerCounter == 1) {
+                                 val coord = queue.last()
+                                 var tempZ = 0
+                                 for (i in coord) {
+                                     tempZ = i.z
+                                 }
+                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${tempZ + zOffset + negPosCheck(file)}")
+                                 failedLayerCounter++
+                             } else if (failedLayerCounter == 2) {
+                                 val coord = queue.pollLast()
+                                 var completedBlocks = 0
+                                 var totalBlocks = 0
+                                 for (i in coord) {
+                                     totalBlocks++
+                                     if (mc.world.getBlockState(BlockPos(i.x, 255, i.z)).block !is BlockObsidian) {
+                                         completedBlocks++
+                                     }
+                                 }
+                                 if (completedBlocks == totalBlocks || queue.size == queueSizeDesired) {
+                                     while(queue.size != queueSizeDesired) {
+                                         queue.pollLast()
+                                     }
+                                     var positionInQueue = 0
+                                     val positionDifference = queue.size - failurePosition
+                                     while(positionInQueue <= positionDifference) {
+                                         queue.poll()
+                                         positionInQueue++
+                                     }
+                                     fileNameFull = fileNameFull.split(".")[0]
+                                     failedLayerCounter = 0
+                                     state = State.BREAK
+                                 } else {
+                                     failedLayerCounter = 1
+                                     failurePosition++
+                                 }
+                             }
+                        } else {
+                            state = State.BREAK
+                        }
                     }
                 }
 
@@ -221,7 +271,6 @@ internal object Breaker : PluginModule(
                             }
                             threeCoord = queue.poll()
                             if (firstBlock) {
-                                firstBlock = false
                                 selections.add(threeCoord)
                                 selections.add(threeCoord)
                             } else {
@@ -250,20 +299,16 @@ internal object Breaker : PluginModule(
                                 }
                             }
                             breakCounter++
-                            if (needToMine) {
-                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir) { // thanks leijurv papi
+                            if (needToMine || firstBlock) {
+                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir || firstBlock) { // thanks leijurv papi
                                     BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
+                                    firstBlock = false
                                 }
-                            } else if (loadChunkCount != 15){
-                                loadChunkCount++
-                                breakCounter = 0
-                            } else {
-                                loadChunkCount = 0
                             }
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter++
-                        } else if (breakCounter == 2 && delay != 22) {
+                        } else if (breakCounter == 2 && delay != 22) { // breakCounter 2 and else are for checking ghost blocks
                             delay++
                         } else {
                             delay = 0
@@ -302,24 +347,45 @@ internal object Breaker : PluginModule(
             state = State.ASSIGN
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
             if (runShutdownOnDisable) {
-                val fileCopy = file
-                val xCopy = x
-                val zCopy = z
-                thread {
-                    Thread.sleep(1000)
-                    try {
-                        println("Running bepatone shutdown hook")
+                if (fileNameFull.contains(".failed")) {
+                    val fileCopy = file
+                    thread {
+                        Thread.sleep(1000)
+                        try {
+                            println("Running bepatone shutdown hook")
 
-                        val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
+                            val url = URL("http://$url/fail/${fileCopy}/${firstLineOfFailedFile.x}/0/${firstLineOfFailedFile.z}/${username}")
 
-                        with(url.openConnection() as HttpURLConnection) {
-                            requestMethod = "GET"  // optional default is GET
+                            with(url.openConnection() as HttpURLConnection) {
+                                requestMethod = "GET"  // optional default is GET
 
-                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                                println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
 
+                            }
+                        } catch (e: Exception) {
+                            println("Running bepatone shutdown hook failed")
                         }
-                    } catch (e: Exception) {
-                        println("Running bepatone shutdown hook failed")
+                    }
+                } else {
+                    val fileCopy = file
+                    val xCopy = x
+                    val zCopy = z
+                    thread {
+                        Thread.sleep(1000)
+                        try {
+                            println("Running bepatone shutdown hook")
+
+                            val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
+
+                            with(url.openConnection() as HttpURLConnection) {
+                                requestMethod = "GET"  // optional default is GET
+
+                                println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+
+                            }
+                        } catch (e: Exception) {
+                            println("Running bepatone shutdown hook failed")
+                        }
                     }
                 }
             }
@@ -353,37 +419,69 @@ internal object Breaker : PluginModule(
     }
     private fun disconnectHook() {
         if (state != State.QUEUE) {
-            println("WHAT IS THIS +++++++++++++++++++++++++++++++++++++++++++++++++")
-            delayReconnect = 0
-            state = State.QUEUE
-            val fileCopy = file
-            val xCopy = x
-            val zCopy = z
-            val blocksBrokenCopy = blocks_broken
-            blocks_broken = 0
-            thread {
-                Thread.sleep(1000)
-                try {
-                    println("Running bepatone shutdown hook")
+            if (fileNameFull.contains(".failed")) {
+                delayReconnect = 0
+                state = State.QUEUE
+                val fileCopy = file
+                val blocksBrokenCopy = blocks_broken
+                blocks_broken = 0
+                thread { // TODO FIX THIS
+                    Thread.sleep(1000)
+                    try {
+                        println("Running bepitone shutdown hook") // kys lion
 
-                    val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
+                        val url = URL("http://$url/fail/${fileCopy}/${firstLineOfFailedFile.x}/0/${firstLineOfFailedFile.z}/${username}")
 
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
+                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        }
+                    } catch (e: Exception) {
+                        println("Running bepitone shutdown hook failed")
                     }
-                } catch (e: Exception) {
-                    println("Running bepatone shutdown hook failed")
+                    try {
+                        val url = URL("http://$url/leaderboard/${username}/${blocksBrokenCopy}")
+
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
+                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        }
+                    } catch (e: Exception) {
+                        println("Running bepatone update leaderboard hook failed")
+                    }
                 }
-                try {
-                    val url = URL("http://$url/leaderboard/${username}/${blocksBrokenCopy}")
+            } else {
+                delayReconnect = 0
+                state = State.QUEUE
+                val fileCopy = file
+                val xCopy = x
+                val zCopy = z
+                val blocksBrokenCopy = blocks_broken
+                blocks_broken = 0
+                thread {
+                    Thread.sleep(1000)
+                    try {
+                        println("Running bepatone shutdown hook")
 
-                    with(url.openConnection() as HttpURLConnection) {
-                        requestMethod = "GET"  // optional default is GET
-                        println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${username}")
+
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
+                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        }
+                    } catch (e: Exception) {
+                        println("Running bepatone shutdown hook failed")
                     }
-                } catch (e: Exception) {
-                    println("Running bepatone update leaderboard hook failed")
+                    try {
+                        val url = URL("http://$url/leaderboard/${username}/${blocksBrokenCopy}")
+
+                        with(url.openConnection() as HttpURLConnection) {
+                            requestMethod = "GET"  // optional default is GET
+                            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                        }
+                    } catch (e: Exception) {
+                        println("Running bepatone update leaderboard hook failed")
+                    }
                 }
             }
         }
