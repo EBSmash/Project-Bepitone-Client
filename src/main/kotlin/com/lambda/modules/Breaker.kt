@@ -15,6 +15,7 @@ import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
+import net.minecraftforge.fml.client.FMLClientHandler
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
@@ -43,6 +44,7 @@ internal object Breaker : PluginModule(
     private var delay = 0
     private var firstLineOfFailedFile : BlockPos = BlockPos(0,0,0)
     private var loadChunkCount = 15
+    private var backupCounter = 20
     private var delayReconnect = 0
     private var breakCounter = 0
     var x = 0
@@ -53,7 +55,6 @@ internal object Breaker : PluginModule(
     private var empty = false
     private var queueSizeDesired = 0
     private var failurePosition = 0
-    private var firstJobInLayer = true
     const val xOffset = -5000
     const val zOffset = -5000
     var username = ""
@@ -66,10 +67,53 @@ internal object Breaker : PluginModule(
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
     private var finishedWithFile = false
+    private var restart = 1
+
+    private fun backupCurrentFile() {
+        val fileCopy = file
+        val xCopy = x
+        val zCopy = z
+        val usernameCopy = username
+        thread {
+            try {
+                println("Running bepitone shutdown hook") // kys lion
+
+                val url = URL("http://$url/fail/${fileCopy}/${xCopy}/256/${zCopy}/${usernameCopy}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                }
+                MessageSendHelper.sendChatMessage("Layer successfully backed up!")
+            } catch (e: Exception) {
+                MessageSendHelper.sendChatMessage("Running backup failed, this is NOT catastrophic")
+                println("Running bepitone shutdown hook failed")
+            }
+        }
+    }
+
+    private fun updateLeaderboard() {
+        val blocksBrokenCopy = blocks_broken
+        val usernameCopy = username
+        blocks_broken = 0
+        thread {
+            try {
+                val url = URL("http://$url/leaderboard/${usernameCopy}/${blocksBrokenCopy}")
+
+                with(url.openConnection() as HttpURLConnection) {
+                    requestMethod = "GET"  // optional default is GET
+                    println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+                }
+            } catch (e: Exception) {
+                println("Running bepitone update leaderboard hook failed")
+            }
+        }
+    }
 
     private fun readFile() {
         try {
-            val url = URL("http://$url/assign/$file/$username")
+            val url = URL("http://$url/assign/$file/$username/$restart")
+            restart = 1
             var queueBuffer : Queue<LinkedHashSet<BlockPos>> = LinkedList()
             val connection = url.openConnection()
             var tempX:Int
@@ -81,7 +125,6 @@ internal object Breaker : PluginModule(
             queue.clear()
             BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                 var line: String?
-                //for each line
                 while (inp.readLine().also { line = it } != null) {
                     if (fileFirstLine) {
                         fileFirstLine = false
@@ -135,7 +178,8 @@ internal object Breaker : PluginModule(
 
     init {
         onEnable {
-            state = State.ASSIGN;
+            restart = 1
+            state = State.ASSIGN
             busy = false
             empty = false
 
@@ -147,7 +191,7 @@ internal object Breaker : PluginModule(
                     id = inp.readLine()
                 }
             } catch (_: ConnectException) {
-                MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+                MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip.")
                 disable()
             } catch (_: IOException) {
                 MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
@@ -170,11 +214,14 @@ internal object Breaker : PluginModule(
                 disconnectHook()
             }
         }
+
         safeListener<TickEvent.ClientTickEvent> {
 
             val mc = Minecraft.getMinecraft()
             if (mc.player.dimension == 1 && x != 0 && z != 0) {
                 disconnectHook()
+            } else if (mc.player.dimension == 1 && state != State.QUEUE) {
+                state = State.QUEUE
             }
             when (state) {
 
@@ -192,6 +239,7 @@ internal object Breaker : PluginModule(
 
                 State.LOAD -> {
                     if (finishedWithFile) {
+                        failurePosition = 0
                         state = State.TRAVEL
                     }
                 }
@@ -199,6 +247,7 @@ internal object Breaker : PluginModule(
                 State.TRAVEL -> {
                     if (queue.isEmpty()) {
                         state = State.ASSIGN
+                        restart = 0
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
                     }
 
@@ -248,6 +297,9 @@ internal object Breaker : PluginModule(
                                      }
                                      fileNameFull = fileNameFull.split(".")[0]
                                      failedLayerCounter = 0
+                                     failurePosition = 0
+
+                                     backupCounter = 20
                                      state = State.BREAK
                                  } else {
                                      failedLayerCounter = 1
@@ -255,6 +307,7 @@ internal object Breaker : PluginModule(
                                  }
                              }
                         } else {
+                            backupCounter = 20
                             state = State.BREAK
                         }
                     }
@@ -314,12 +367,19 @@ internal object Breaker : PluginModule(
                             delay = 0
                             breakCounter = 0
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+                            if (backupCounter <= 20) {
+                                backupCurrentFile()
+                                updateLeaderboard()
+                                backupCounter = 0
+                            } else {
+                                backupCounter++
+                            }
                         }
                     }
                 }
                 State.QUEUE -> {
                 // await joining server
-                    val server = Minecraft.getMinecraft().currentServerData;
+                    val server = Minecraft.getMinecraft().currentServerData
                     if (server != null) {
                         if (mc.player.dimension == 0 && delayReconnect != 100 && server.serverIP.contains("2b2t")) {
                             delayReconnect++
@@ -402,7 +462,7 @@ internal object Breaker : PluginModule(
                         println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
                     }
                 } catch (e: Exception) {
-                    println("Running bepatone update leaderboard hook failed")
+                    println("Running bepitone update leaderboard hook failed")
                 }
             }
         }
