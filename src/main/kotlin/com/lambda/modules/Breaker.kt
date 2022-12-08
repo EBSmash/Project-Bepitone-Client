@@ -367,7 +367,7 @@ internal object Breaker : PluginModule(
                             delay = 0
                             breakCounter = 0
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            if (backupCounter <= 20) {
+                            if (backupCounter >= 20) {
                                 backupCurrentFile()
                                 updateLeaderboard()
                                 backupCounter = 0
