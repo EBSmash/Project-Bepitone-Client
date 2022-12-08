@@ -15,7 +15,6 @@ import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
-import net.minecraftforge.fml.client.FMLClientHandler
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
@@ -332,6 +331,7 @@ internal object Breaker : PluginModule(
                             }
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
+                            val lastZ = z
                             for (coord in selections[1]) {
                                 sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
@@ -352,8 +352,8 @@ internal object Breaker : PluginModule(
                                 }
                             }
                             breakCounter++
-                            if (needToMine || firstBlock) {
-                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir || firstBlock) { // thanks leijurv papi
+                            if (needToMine || firstBlock || kotlin.math.abs(lastZ - z) > 1) {
+                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + file * 5), 255 ,z + zOffset + negPosCheck(file))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - z) > 1) { // thanks leijurv papi
                                     BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + file * 5)} 256 ${z + zOffset + negPosCheck(file)}")
                                     firstBlock = false
                                 }
