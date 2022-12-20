@@ -72,12 +72,20 @@ internal object Breaker : PluginModule(
 
     class Assignment(val layer: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
 
-    private fun doApiCall(path: String, method: String = "GET") {
+    private fun doApiCall(path: String, method: String = "GET"): String? {
         val url = URL("http://$url/$path")
-        with(url.openConnection() as HttpURLConnection) {
-            requestMethod = method
-            println("\nSent 'GET' request to URL : $url; Response Code : $responseCode")
+        val con = url.openConnection() as HttpURLConnection
+        con.requestMethod = method
+        val responseCode = con.getResponseCode()
+        val reader = BufferedReader(InputStreamReader(con.getInputStream()))
+        val text = reader.readText()
+        if (responseCode == 200) {
+            return text
         }
+        MessageSendHelper.sendChatMessage("Api call to $path returned an error ($responseCode):")
+        MessageSendHelper.sendChatMessage(text)
+        println(text)
+        return null
     }
 
     // only valid during Break state
