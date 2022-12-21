@@ -80,7 +80,7 @@ internal object Breaker : PluginModule(
             val responseCode = con.getResponseCode()
             val reader = BufferedReader(InputStreamReader(con.getInputStream()))
             val text = reader.readText()
-            if (responseCode == 200) {
+            if (responseCode in 200..299) {
                 return text
             }
             MessageSendHelper.sendChatMessage("Api call to $path returned an error ($responseCode):")
