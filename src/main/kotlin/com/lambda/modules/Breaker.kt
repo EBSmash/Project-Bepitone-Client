@@ -34,8 +34,9 @@ internal object Breaker : PluginModule(
         description = "",
         pluginMain = ExamplePlugin
     ) {
-    private val EXECUTOR = Executors.newCachedThreadPool();
-    private var queue: Deque<LinkedHashSet<BlockPos>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
+    private val EXECUTOR = Executors.newCachedThreadPool()
+    // the int is the index in the layer data returned by the api
+    private var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
     private var brokenBlocksBuf = 0
     private var failedLayerCounter = 0
     private var delay = 0
@@ -48,7 +49,6 @@ internal object Breaker : PluginModule(
     var x = 0
     var z = 0
     var assignment: Assignment? = null
-    private var fileNameFull = "" // TODO: remove this
     private var busy = false
     private var empty = false
     private var queueSizeDesired = 0
@@ -74,17 +74,27 @@ internal object Breaker : PluginModule(
 
     private fun doApiCall(path: String, method: String = "GET"): String? {
         val url = URL("http://$url/$path")
-        val con = url.openConnection() as HttpURLConnection
-        con.requestMethod = method
-        val responseCode = con.getResponseCode()
-        val reader = BufferedReader(InputStreamReader(con.getInputStream()))
-        val text = reader.readText()
-        if (responseCode == 200) {
-            return text
+        try {
+            val con = url.openConnection() as HttpURLConnection
+            con.requestMethod = method
+            val responseCode = con.getResponseCode()
+            val reader = BufferedReader(InputStreamReader(con.getInputStream()))
+            val text = reader.readText()
+            if (responseCode == 200) {
+                return text
+            }
+            MessageSendHelper.sendChatMessage("Api call to $path returned an error ($responseCode):")
+            MessageSendHelper.sendChatMessage(text)
+            println(text)
+            return null
+        } catch (ex: ConnectException) {
+            MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
+            ex.printStackTrace()
+        } catch (ex: IOException) {
+            MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
+            ex.printStackTrace()
         }
-        MessageSendHelper.sendChatMessage("Api call to $path returned an error ($responseCode):")
-        MessageSendHelper.sendChatMessage(text)
-        println(text)
+        disable()
         return null
     }
 
@@ -92,12 +102,13 @@ internal object Breaker : PluginModule(
     private fun sendUpdate() {
         val assign = assignment!!
         val stats = breakState!!
+        val mined = stats.blocksMined
+        stats.blocksMined = 0
+        val depth = stats.depth
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
-                val mined = stats.blocksMined
-                stats.blocksMined = 0
-                doApiCall("update/${assign.layer}/${stats.depth}/${username!!}/$mined")
+                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined")
             } catch (e: Exception) {
                 // TODO: if the API is down we should probably disable?
                 MessageSendHelper.sendChatMessage("Failed to send update to api")
@@ -106,52 +117,43 @@ internal object Breaker : PluginModule(
     }
 
     private fun getAssignmentFromApi(posZ: Double): Assignment? {
-        try {
-            val parity = if (posZ > 0) "even" else  "odd"
-            val url = URL("http://$url/assign/$username/$parity")
-            val connection = url.openConnection()
-            queue.clear()
-            BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
-                val firstLine = inp.readLine()
-                val split = firstLine.split(".");
-                val layer = split[0].toInt()
-                val isFail = split.size > 1 && split[1] == "failed"
+        val parity = if (posZ > 0) "even" else  "odd"
+        val apiResult = doApiCall("assign/$username/$parity") ?: return null
 
-                val data = mutableListOf<List<BlockPos>>()
-                inp.forEachLine { line ->
-                    if (!line.isEmpty()) {
-                        val row = mutableListOf<BlockPos>()
-                        for (pair in line.split("#")) {
-                            val numSplit = pair.split(" ")
-                            val x = numSplit[0].toInt()
-                            val z = numSplit[1].toInt()
-                            row.add(BlockPos(x, 255, z))
-                        }
-                        data.add(row)
-                    }
+        queue.clear()
+        val lines = apiResult.lineSequence().iterator()
+        val firstLine = lines.next()
+        val split = firstLine.split(".");
+        val layer = split[0].toInt()
+        val isFail = split.size > 1 && split[1] == "failed"
+
+        val data = mutableListOf<List<BlockPos>>()
+        lines.forEach { line ->
+            if (!line.isEmpty()) {
+                val row = mutableListOf<BlockPos>()
+                for (pair in line.split("#")) {
+                    val numSplit = pair.split(" ")
+                    val x = numSplit[0].toInt()
+                    val z = numSplit[1].toInt()
+                    row.add(BlockPos(x, 255, z))
                 }
-
-                queue.clear()
-                // lol
-                repeat((if (isFail) 2 else 1)) {
-                    data.forEach({ queue.add(LinkedHashSet(it)) })
-                }
-                queueSizeDesired = data.size
-
-                val first = data.getOrNull(0)?.get(0)
-                // TODO: these defaults are nonsense
-                x = first?.x ?: 0
-                z = first?.z ?: 0
-                return Assignment(layer, isFail, data)
+                data.add(row)
             }
-        } catch (_: ConnectException) {
-            MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
-            disable()
-        } catch (_: IOException) {
-            MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
-            disable()
         }
-        return null
+        queue.clear()
+        // lol
+        repeat((if (isFail) 2 else 1)) {
+            for (i in 0 until data.size) {
+                queue.add(Pair(LinkedHashSet(data[i]), i))
+            }
+        }
+        queueSizeDesired = data.size
+
+        val first = data.getOrNull(0)?.get(0)
+        // TODO: these defaults are nonsense
+        x = first?.x ?: 0
+        z = first?.z ?: 0
+        return Assignment(layer, isFail, data)
     }
 
     init {
@@ -174,7 +176,6 @@ internal object Breaker : PluginModule(
         }
 
         safeListener<TickEvent.ClientTickEvent> {
-
             val mc = Minecraft.getMinecraft()
             if (mc.player.dimension == 1 && x != 0 && z != 0) {
                 disconnectHook()
@@ -210,11 +211,11 @@ internal object Breaker : PluginModule(
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
                         selections.clear()
                         firstBlock = true
-                        if (fileNameFull.contains(".failed")) {
+                        if (assignment!!.isFail) {
                             val layer = assignment!!.layer
                              if (failedLayerCounter == 0) {
                                  selections.clear()
-                                 val temp = queue.last()
+                                 val temp = queue.last().first
                                  var tempZ = 0
                                  var tempX = 0
                                  for (coord in temp) {
@@ -225,7 +226,7 @@ internal object Breaker : PluginModule(
                                  BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${tempZ + zOffset + negPosCheck(layer)}")
                                  failedLayerCounter++
                              } else if (failedLayerCounter == 1) {
-                                 val coord = queue.last()
+                                 val coord = queue.last().first
                                  var tempZ = 0
                                  for (i in coord) {
                                      tempZ = i.z
@@ -233,7 +234,7 @@ internal object Breaker : PluginModule(
                                  BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${tempZ + zOffset + negPosCheck(layer)}")
                                  failedLayerCounter++
                              } else if (failedLayerCounter == 2) {
-                                 val coord = queue.pollLast()
+                                 val coord = queue.pollLast().first
                                  var completedBlocks = 0
                                  var totalBlocks = 0
                                  for (i in coord) {
@@ -252,7 +253,6 @@ internal object Breaker : PluginModule(
                                          queue.poll()
                                          positionInQueue++
                                      }
-                                     fileNameFull = fileNameFull.split(".")[0]
                                      failedLayerCounter = 0
                                      failurePosition = 0
 
@@ -278,10 +278,12 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
+                                doApiCall("/finish/$username", method = "PUT")
                                 state = State.TRAVEL
                                 return@safeListener
                             }
-                            threeCoord = queue.poll()
+                            val tuple = queue.poll()
+                            threeCoord = tuple.first
                             if (firstBlock) {
                                 selections.add(threeCoord)
                                 selections.add(threeCoord)
@@ -289,6 +291,7 @@ internal object Breaker : PluginModule(
                                 selections[1] = selections[0]
                                 selections[0] = threeCoord
                             }
+                            stats.depth = tuple.second
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
                             val lastZ = z
@@ -369,7 +372,7 @@ internal object Breaker : PluginModule(
             sendUpdate()
         }
     }
-    enum class State() {
+    enum class State {
         ASSIGN, TRAVEL, BREAK, QUEUE, LOAD
     }
 
