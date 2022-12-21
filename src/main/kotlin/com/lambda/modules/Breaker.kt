@@ -108,7 +108,7 @@ internal object Breaker : PluginModule(
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
-                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined")
+                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined", method = "POST")
             } catch (e: Exception) {
                 // TODO: if the API is down we should probably disable?
                 MessageSendHelper.sendChatMessage("Failed to send update to api")
@@ -278,7 +278,7 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                doApiCall("/finish/$username", method = "PUT")
+                                doApiCall("/finish/$username", method = "POST")
                                 state = State.TRAVEL
                                 return@safeListener
                             }
