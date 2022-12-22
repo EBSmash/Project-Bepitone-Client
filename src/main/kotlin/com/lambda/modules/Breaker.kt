@@ -72,7 +72,7 @@ internal object Breaker : PluginModule(
 
     class Assignment(val layer: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
 
-    private fun doApiCall(path: String, method: String = "GET"): String? {
+    private fun doApiCall(path: String, method: String): String? {
         val url = URL("http://$url/$path")
         try {
             val con = url.openConnection() as HttpURLConnection
@@ -118,7 +118,7 @@ internal object Breaker : PluginModule(
 
     private fun getAssignmentFromApi(posZ: Double): Assignment? {
         val parity = if (posZ > 0) "even" else  "odd"
-        val apiResult = doApiCall("assign/$username/$parity") ?: return null
+        val apiResult = doApiCall("assign/$username/$parity", method = "PUT") ?: return null
 
         queue.clear()
         val lines = apiResult.lineSequence().iterator()
