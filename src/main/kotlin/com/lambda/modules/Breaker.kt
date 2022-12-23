@@ -376,7 +376,7 @@ internal object Breaker : PluginModule(
             state = State.ASSIGN
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
             runShutdownOnDisable = true
-            sendUpdate()
+            disconnectHook()
         }
     }
     enum class State {
