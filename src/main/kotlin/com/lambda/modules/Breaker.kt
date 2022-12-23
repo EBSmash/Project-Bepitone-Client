@@ -209,6 +209,7 @@ internal object Breaker : PluginModule(
                 State.TRAVEL -> {
                     if (queue.isEmpty()) {
                         state = State.ASSIGN
+                        doApiCall("/finish/$username", method = "POST")
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
                     }
 
@@ -282,7 +283,6 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                doApiCall("/finish/$username", method = "POST")
                                 state = State.TRAVEL
                                 return@safeListener
                             }
