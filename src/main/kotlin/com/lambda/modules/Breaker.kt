@@ -194,7 +194,7 @@ internal object Breaker : PluginModule(
                     username = mc.player.displayNameString
                     EXECUTOR.execute {
                         Thread.sleep(100)
-                        getAssignmentFromApi(mc.player.posZ)
+                        assignment = getAssignmentFromApi(mc.player.posZ)
                     }
                     state = State.LOAD
                 }
