@@ -18,6 +18,7 @@ import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.IOException
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.ConnectException
 import java.net.HttpURLConnection
@@ -74,18 +75,22 @@ internal object Breaker : PluginModule(
 
     private fun doApiCall(path: String, method: String): String? {
         val url = URL("http://$url/$path")
+        val con = url.openConnection() as HttpURLConnection
+        con.requestMethod = method
         try {
-            val con = url.openConnection() as HttpURLConnection
-            con.requestMethod = method
             val responseCode = con.getResponseCode()
-            val reader = BufferedReader(InputStreamReader(con.getInputStream()))
-            val text = reader.readText()
             if (responseCode in 200..299) {
-                return text
+                return BufferedReader(InputStreamReader(con.getInputStream())).readText()
             }
+
             MessageSendHelper.sendChatMessage("Api call to $path returned an error ($responseCode):")
-            MessageSendHelper.sendChatMessage(text)
-            println(text)
+            val stream = con.getErrorStream()
+            stream?.let {
+                val text = BufferedReader(InputStreamReader(stream)).readText()
+                MessageSendHelper.sendChatMessage(text)
+                println(text)
+            }
+
             return null
         } catch (ex: ConnectException) {
             MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
@@ -110,7 +115,6 @@ internal object Breaker : PluginModule(
                 println("Sending update on layer progress")
                 doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined", method = "POST")
             } catch (e: Exception) {
-                // TODO: if the API is down we should probably disable?
                 MessageSendHelper.sendChatMessage("Failed to send update to api")
             }
         }
