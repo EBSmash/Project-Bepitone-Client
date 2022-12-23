@@ -158,6 +158,7 @@ internal object Breaker : PluginModule(
         x = first?.x ?: 0
         z = first?.z ?: 0
         assignment = Assignment(layer, isFail, data)
+        breakState = BreakState()
     }
 
     init {
@@ -282,8 +283,10 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                state = State.TRAVEL
                                 doApiCall("/finish/$username", method = "PUT")
+                                breakState = null
+                                assignment = null
+                                state = State.TRAVEL
                                 return@safeListener
                             }
                             val tuple = queue.poll()
