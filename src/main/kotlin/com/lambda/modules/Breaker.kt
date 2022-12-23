@@ -57,7 +57,7 @@ internal object Breaker : PluginModule(
     const val xOffset = -5000
     const val zOffset = -5000
     var username = ""
-    private val url by setting("Server IP", "alightintheendlessvoid.org")
+    public val url by setting("Server IP", "alightintheendlessvoid.org")
     private var id = "0"
     private var runShutdownOnDisable = true
     private var sel = BetterBlockPos(0,0,0)
