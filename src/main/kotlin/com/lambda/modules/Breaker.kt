@@ -120,9 +120,9 @@ internal object Breaker : PluginModule(
         }
     }
 
-    private fun getAssignmentFromApi(posZ: Double): Assignment? {
+    private fun getAssignmentFromApi(posZ: Double) {
         val parity = if (posZ > 0) "even" else  "odd"
-        val apiResult = doApiCall("assign/$username/$parity", method = "PUT") ?: return null
+        val apiResult = doApiCall("assign/$username/$parity", method = "PUT") ?: return
 
         queue.clear()
         val lines = apiResult.lineSequence().iterator()
@@ -157,7 +157,7 @@ internal object Breaker : PluginModule(
         // TODO: these defaults are nonsense
         x = first?.x ?: 0
         z = first?.z ?: 0
-        return Assignment(layer, isFail, data)
+        assignment = Assignment(layer, isFail, data)
     }
 
     init {
@@ -194,7 +194,7 @@ internal object Breaker : PluginModule(
                     username = mc.player.displayNameString
                     EXECUTOR.execute {
                         Thread.sleep(100)
-                        assignment = getAssignmentFromApi(mc.player.posZ)
+                        getAssignmentFromApi(mc.player.posZ)
                     }
                     state = State.LOAD
                 }
@@ -209,7 +209,6 @@ internal object Breaker : PluginModule(
                 State.TRAVEL -> {
                     if (queue.isEmpty()) {
                         state = State.ASSIGN
-                        doApiCall("/finish/$username", method = "POST")
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
                     }
 
@@ -284,6 +283,7 @@ internal object Breaker : PluginModule(
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
                                 state = State.TRAVEL
+                                doApiCall("/finish/$username", method = "PUT")
                                 return@safeListener
                             }
                             val tuple = queue.poll()
