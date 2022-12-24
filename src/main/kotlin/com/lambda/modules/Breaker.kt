@@ -58,7 +58,6 @@ internal object Breaker : PluginModule(
     const val zOffset = -5000
     var username: String? = null
     private val url by setting("Server IP", "alightintheendlessvoid.org")
-    private var runShutdownOnDisable = true
     private var sel = BetterBlockPos(0,0,0)
     var state: State = State.ASSIGN
     private var firstBlock  = true
@@ -67,7 +66,7 @@ internal object Breaker : PluginModule(
 
     class BreakState {
         var blocksMined = 0
-        var depth = 0 // TODO: this needs to be set
+        var depth = 0
         var depthOfLastUpdate = 0
     }
 
@@ -77,6 +76,7 @@ internal object Breaker : PluginModule(
         val url = URL("http://$url/$path")
         val con = url.openConnection() as HttpURLConnection
         con.requestMethod = method
+        con.setRequestProperty("bep-api-key", "48a24e8304a49471404bd036ed7e814bdd59d902d51a47a4bcb090e2fb284f70")
         try {
             val responseCode = con.getResponseCode()
             if (responseCode in 200..299) {
@@ -113,7 +113,7 @@ internal object Breaker : PluginModule(
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
-                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined", method = "PATCH")
+                doApiCall("update/${assign.layer}/$depth/${username!!}/$mined", method = "PATCH")
             } catch (e: Exception) {
                 MessageSendHelper.sendChatMessage("Failed to send update to api")
             }
@@ -122,7 +122,7 @@ internal object Breaker : PluginModule(
 
     private fun getAssignmentFromApi(posZ: Double) {
         val parity = if (posZ > 0) "even" else  "odd"
-        val apiResult = doApiCall("assign/$username/$parity", method = "PUT") ?: return
+        val apiResult = doApiCall("assign/${username!!}/$parity", method = "PUT") ?: return
 
         queue.clear()
         val lines = apiResult.lineSequence().iterator()
@@ -357,7 +357,6 @@ internal object Breaker : PluginModule(
                             delayReconnect = 0
                         }
                         if (!server.serverIP.contains("2b2t")) {
-                            runShutdownOnDisable = false
                             disable()
                         }
                     }
@@ -375,7 +374,6 @@ internal object Breaker : PluginModule(
         onDisable {
             state = State.ASSIGN
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
-            runShutdownOnDisable = true
             disconnectHook()
         }
     }
