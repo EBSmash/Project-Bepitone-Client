@@ -113,7 +113,7 @@ internal object Breaker : PluginModule(
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
-                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined", method = "POST")
+                doApiCall("update/${assign.layer}/${depth}/${username!!}/$mined", method = "PATCH")
             } catch (e: Exception) {
                 MessageSendHelper.sendChatMessage("Failed to send update to api")
             }
