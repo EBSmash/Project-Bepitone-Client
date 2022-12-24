@@ -283,7 +283,7 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                doApiCall("/finish/$username", method = "PUT")
+                                doApiCall("/finish/$layer", method = "PUT")
                                 breakState = null
                                 assignment = null
                                 state = State.TRAVEL
