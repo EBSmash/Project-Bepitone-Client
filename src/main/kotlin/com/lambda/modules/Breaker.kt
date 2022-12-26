@@ -73,6 +73,7 @@ internal object Breaker : PluginModule(
     class Assignment(val layer: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
 
     private fun doApiCall(path: String, method: String): String? {
+        MessageSendHelper.sendChatMessage("/${path}")
         val url = URL("http://$url/$path")
         val con = url.openConnection() as HttpURLConnection
         con.requestMethod = method
@@ -95,7 +96,7 @@ internal object Breaker : PluginModule(
         } catch (ex: ConnectException) {
             MessageSendHelper.sendErrorMessage("failed to connect to api \n Check that you set the ip. \n if you have Message EBS#2574.")
             ex.printStackTrace()
-        } catch (ex: IOException) {
+        } catch (ex: Exception) {
             MessageSendHelper.sendChatMessage("Either Something went very wrong or WE FINSIHEDDD (x to doubt).")
             ex.printStackTrace()
         }
@@ -113,9 +114,10 @@ internal object Breaker : PluginModule(
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
-                doApiCall("update/${assign.layer}/$depth/${username!!}/$mined", method = "PATCH")
+                doApiCall("update/${assign.layer}/$depth/${username!!}/$mined", method = "POST")
             } catch (e: Exception) {
-                MessageSendHelper.sendChatMessage("Failed to send update to api")
+                MessageSendHelper.sendChatMessage("Failed to send update to api (${e.message}")
+                e.printStackTrace()
             }
         }
     }
@@ -192,10 +194,16 @@ internal object Breaker : PluginModule(
                     delay = 0
                     loadChunkCount = 15
                     assignment = null
+                    breakState = null
                     username = mc.player.displayNameString
                     EXECUTOR.execute {
                         Thread.sleep(100)
-                        getAssignmentFromApi(mc.player.posZ)
+                        try {
+                            getAssignmentFromApi(mc.player.posZ)
+                        } catch (ex: Exception) {
+                            MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception (${ex.message}")
+                            ex.printStackTrace()
+                        }
                     }
                     state = State.LOAD
                 }
@@ -210,6 +218,11 @@ internal object Breaker : PluginModule(
                 State.TRAVEL -> {
                     if (queue.isEmpty()) {
                         state = State.ASSIGN
+                        if (assignment != null) {
+                            doApiCall("finish/${assignment!!.layer}", method = "PUT")
+                            breakState = null
+                            assignment = null
+                        }
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
                     }
 
@@ -283,7 +296,7 @@ internal object Breaker : PluginModule(
                             stats.blocksMined += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                doApiCall("/finish/$layer", method = "PUT")
+                                doApiCall("finish/$layer", method = "PUT")
                                 breakState = null
                                 assignment = null
                                 state = State.TRAVEL
@@ -364,7 +377,8 @@ internal object Breaker : PluginModule(
             }
             if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL) && mc.player.dimension == 0) { // if player falls
                 try {
-                    println("Running bepatone shutdown hook")
+                    MessageSendHelper.sendChatMessage("Disabling because below y 200")
+                    disconnectHook()
                     disable()
                 } catch (e: Exception) {
                     println("Running bepatone shutdown hook failed")
