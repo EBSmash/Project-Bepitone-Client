@@ -57,7 +57,7 @@ internal object Breaker : PluginModule(
     const val xOffset = -5000
     const val zOffset = -5000
     var username: String? = null
-    private val url by setting("Server IP", "alightintheendlessvoid.org")
+    private val url by setting("Server IP", "bep.babbaj.dev")
     private var sel = BetterBlockPos(0,0,0)
     var state: State = State.ASSIGN
     private var firstBlock  = true
@@ -65,12 +65,11 @@ internal object Breaker : PluginModule(
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
 
     class BreakState {
-        var blocksMined = 0
+        var blocksMined = 0 // reset when sending update
         var depth = 0
-        var depthOfLastUpdate = 0
     }
 
-    class Assignment(val layer: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
+    class Assignment(val layer: Int, val baseDepth: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
 
     private fun doApiCall(path: String, method: String): String? {
         MessageSendHelper.sendChatMessage("/${path}")
@@ -128,10 +127,9 @@ internal object Breaker : PluginModule(
 
         queue.clear()
         val lines = apiResult.lineSequence().iterator()
-        val firstLine = lines.next()
-        val split = firstLine.split(".");
-        val layer = split[0].toInt()
-        val isFail = split.size > 1 && split[1] == "failed"
+        val layer = lines.next().toInt()
+        val isFail = lines.next().substring("failed=".length).toBooleanStrict()
+        val baseDepth = lines.next().substring("depth=".length).toInt()
 
         val data = mutableListOf<List<BlockPos>>()
         lines.forEach { line ->
@@ -150,7 +148,7 @@ internal object Breaker : PluginModule(
         // lol
         repeat((if (isFail) 2 else 1)) {
             for (i in 0 until data.size) {
-                queue.add(Pair(LinkedHashSet(data[i]), i))
+                queue.add(Pair(LinkedHashSet(data[i]), baseDepth + i))
             }
         }
         queueSizeDesired = data.size
@@ -159,7 +157,7 @@ internal object Breaker : PluginModule(
         // TODO: these defaults are nonsense
         x = first?.x ?: 0
         z = first?.z ?: 0
-        assignment = Assignment(layer, isFail, data)
+        assignment = Assignment(layer, baseDepth, isFail, data)
         breakState = BreakState()
     }
 
@@ -199,7 +197,11 @@ internal object Breaker : PluginModule(
                     EXECUTOR.execute {
                         Thread.sleep(100)
                         try {
+                            MessageSendHelper.sendChatMessage("Requesting assignment from the API")
                             getAssignmentFromApi(mc.player.posZ)
+                            if (assignment != null) {
+                                MessageSendHelper.sendChatMessage("Got layer ${assignment!!.layer}")
+                            }
                         } catch (ex: Exception) {
                             MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception (${ex.message}")
                             ex.printStackTrace()
@@ -299,7 +301,7 @@ internal object Breaker : PluginModule(
                                 doApiCall("finish/$layer", method = "PUT")
                                 breakState = null
                                 assignment = null
-                                state = State.TRAVEL
+                                state = State.ASSIGN
                                 return@safeListener
                             }
                             val tuple = queue.poll()
