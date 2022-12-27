@@ -17,8 +17,6 @@ import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.ConnectException
 import java.net.HttpURLConnection
@@ -46,9 +44,11 @@ internal object Breaker : PluginModule(
     private var backupCounter = 20
     private var delayReconnect = 0
     var breakState: BreakState? = null
+    var blocksMinedTotal = 0 // only used for the hud
     private var breakCounter = 0 // I don't like this
     var x = 0
     var z = 0
+    var prevAssignment: Assignment? = null
     var assignment: Assignment? = null
     private var busy = false
     private var empty = false
@@ -65,7 +65,7 @@ internal object Breaker : PluginModule(
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
 
     class BreakState {
-        var blocksMined = 0 // reset when sending update
+        var blocksMinedSinceLastUpdate = 0 // reset when sending update
         var depth = 0
     }
 
@@ -107,9 +107,9 @@ internal object Breaker : PluginModule(
     private fun sendUpdate() {
         val assign = assignment!!
         val stats = breakState!!
-        val mined = stats.blocksMined
-        stats.blocksMined = 0
-        val depth = stats.depth
+        val mined = stats.blocksMinedSinceLastUpdate
+        stats.blocksMinedSinceLastUpdate = 0
+        val depth = assign.baseDepth + stats.depth
         EXECUTOR.execute {
             try {
                 println("Sending update on layer progress")
@@ -121,8 +121,8 @@ internal object Breaker : PluginModule(
         }
     }
 
-    private fun getAssignmentFromApi(posZ: Double) {
-        val parity = if (posZ > 0) "even" else  "odd"
+    private fun getAssignmentFromApi(isEven: Boolean) {
+        val parity = if (isEven) "even" else  "odd"
         val apiResult = doApiCall("assign/${username!!}/$parity", method = "PUT") ?: return
 
         queue.clear()
@@ -148,7 +148,7 @@ internal object Breaker : PluginModule(
         // lol
         repeat((if (isFail) 2 else 1)) {
             for (i in 0 until data.size) {
-                queue.add(Pair(LinkedHashSet(data[i]), baseDepth + i))
+                queue.add(Pair(LinkedHashSet(data[i]), i))
             }
         }
         queueSizeDesired = data.size
@@ -158,6 +158,7 @@ internal object Breaker : PluginModule(
         x = first?.x ?: 0
         z = first?.z ?: 0
         assignment = Assignment(layer, baseDepth, isFail, data)
+        prevAssignment = assignment
         breakState = BreakState()
     }
 
@@ -198,9 +199,14 @@ internal object Breaker : PluginModule(
                         Thread.sleep(100)
                         try {
                             MessageSendHelper.sendChatMessage("Requesting assignment from the API")
-                            getAssignmentFromApi(mc.player.posZ)
+                            val isEven = if (prevAssignment != null) {
+                                prevAssignment!!.layer % 2 == 1 // we want the opposite of the previous
+                            } else {
+                                mc.player.posZ > 0
+                            }
+                            getAssignmentFromApi(isEven)
                             if (assignment != null) {
-                                MessageSendHelper.sendChatMessage("Got layer ${assignment!!.layer}")
+                                MessageSendHelper.sendChatMessage("Got layer ${assignment!!.layer}, Depth = ${assignment!!.baseDepth}, ${assignment!!.data.size} rows, failed = ${assignment!!.isFail}")
                             }
                         } catch (ex: Exception) {
                             MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception (${ex.message}")
@@ -295,7 +301,8 @@ internal object Breaker : PluginModule(
                         val layer = assignment!!.layer
                         val stats = breakState!!
                         if (breakCounter == 0) {
-                            stats.blocksMined += brokenBlocksBuf
+                            stats.blocksMinedSinceLastUpdate += brokenBlocksBuf
+                            blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
                                 doApiCall("finish/$layer", method = "PUT")
@@ -352,7 +359,7 @@ internal object Breaker : PluginModule(
                             delay = 0
                             breakCounter = 0
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            if (backupCounter >= 20) {
+                            if (backupCounter >= 5) {
                                 sendUpdate()
                                 backupCounter = 0
                             } else {

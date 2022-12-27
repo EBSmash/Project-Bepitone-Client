@@ -15,12 +15,19 @@ internal object StatusHud : PluginLabelHud(
 
     override fun SafeClientEvent.updateText() {
         displayText.addLine("State: ${Breaker.state}" )
+        val assignment = Breaker.assignment;
         val layer = Breaker.assignment?.layer ?: 0 // TODO: this is a meaningless default
-        val blocksBroken = Breaker.breakState?.blocksMined ?: 0
+
         displayText.addLine("Currently Working on Line: $layer")
+        if (assignment != null && Breaker.breakState != null) {
+            val breakSate = Breaker.breakState!!
+            val totalDepth = assignment.baseDepth + assignment.data.size
+            val currentDepth = assignment.baseDepth + breakSate.depth
+            displayText.addLine("Depth: $currentDepth/$totalDepth")
+        }
         displayText.addLine("Going to ${2 + (Breaker.xOffset + layer * 5)} ${z + Breaker.zOffset + negPosCheck(layer)}")
         displayText.addLine("Account: ${Breaker.username}")
-        displayText.addLine("Blocks Broken This session: $blocksBroken", secondaryColor)
+        displayText.addLine("Blocks Broken This session: ${Breaker.blocksMinedTotal}", secondaryColor)
     }
     private fun negPosCheck(fileNum: Int): Int {
         if (fileNum % 2 == 0) {
