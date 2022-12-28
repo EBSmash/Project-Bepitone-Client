@@ -301,6 +301,7 @@ internal object Breaker : PluginModule(
                                      failurePosition = 0
 
                                      backupCounter = 20
+                                     breakCounter = 0
                                      state = State.BREAK
                                  } else {
                                      failedLayerCounter = 1
@@ -309,6 +310,7 @@ internal object Breaker : PluginModule(
                              }
                         } else {
                             backupCounter = 20
+                            breakCounter = 0
                             state = State.BREAK
                         }
                     }
@@ -374,7 +376,7 @@ internal object Breaker : PluginModule(
                             breakCounter++
                         } else {
                             val cringe0 = selections[0].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
-                            val cringe1 = selections[0].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
+                            val cringe1 = selections[1].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
                             // breakCounter 2 and else are for checking ghost blocks
                             if (breakCounter == 2 && delay != 22 && !(packetAirBlocks.containsAll(cringe0) || packetAirBlocks.containsAll(cringe1))) {
                                 delay++
