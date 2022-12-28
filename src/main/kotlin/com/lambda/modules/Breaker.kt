@@ -227,7 +227,7 @@ internal object Breaker : PluginModule(
                                 MessageSendHelper.sendChatMessage("Got layer ${assignment!!.layer}, Depth = ${assignment!!.baseDepth}, ${assignment!!.data.size} rows, failed = ${assignment!!.isFail}")
                             }
                         } catch (ex: Exception) {
-                            MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception (${ex.message}")
+                            MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception ($ex)")
                             ex.printStackTrace()
                         }
                     }
