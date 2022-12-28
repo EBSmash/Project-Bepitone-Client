@@ -5,6 +5,7 @@ import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.event.events.GuiEvent
+import com.lambda.client.event.events.PacketEvent
 import com.lambda.client.event.listener.listener
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
@@ -14,6 +15,8 @@ import net.minecraft.block.BlockAir
 import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
+import net.minecraft.init.Blocks
+import net.minecraft.network.play.server.SPacketBlockChange
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
@@ -23,6 +26,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Deque
 import java.util.LinkedList
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.collections.LinkedHashSet
 
@@ -57,12 +61,13 @@ internal object Breaker : PluginModule(
     const val xOffset = -5000
     const val zOffset = -5000
     var username: String? = null
-    private val url by setting("Server IP", "bep.babbaj.dev")
+    //private val url by setting("Server IP", "bep.babbaj.dev")
     private var sel = BetterBlockPos(0,0,0)
     var state: State = State.ASSIGN
     private var firstBlock  = true
     private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
+    private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState {
         var blocksMinedSinceLastUpdate = 0 // reset when sending update
@@ -73,7 +78,8 @@ internal object Breaker : PluginModule(
 
     private fun doApiCall(path: String, method: String): String? {
         MessageSendHelper.sendChatMessage("/${path}")
-        val url = URL("http://$url/$path")
+        val realUrl = "bep.babbaj.dev";
+        val url = URL("http://$realUrl/$path")
         val con = url.openConnection() as HttpURLConnection
         con.requestMethod = method
         con.setRequestProperty("bep-api-key", "48a24e8304a49471404bd036ed7e814bdd59d902d51a47a4bcb090e2fb284f70")
@@ -178,6 +184,18 @@ internal object Breaker : PluginModule(
         listener<GuiEvent.Displayed> {
             (it.screen as? GuiDisconnected)?.let {
                 disconnectHook()
+            }
+        }
+
+        listener<PacketEvent.PostReceive> { event ->
+            if (event.packet is SPacketBlockChange) {
+                val packet = event.packet as SPacketBlockChange
+                if (packet.getBlockState().getBlock() == Blocks.AIR) {
+                    val pos = packet.getBlockPosition()
+                    if (pos.y == 255) {
+                        packetAirBlocks.add(pos)
+                    }
+                }
             }
         }
 
@@ -305,6 +323,7 @@ internal object Breaker : PluginModule(
                             blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
+                                sendUpdate()
                                 doApiCall("finish/$layer", method = "PUT")
                                 breakState = null
                                 assignment = null
@@ -353,17 +372,23 @@ internal object Breaker : PluginModule(
                         } else if (breakCounter == 1) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakCounter++
-                        } else if (breakCounter == 2 && delay != 22) { // breakCounter 2 and else are for checking ghost blocks
-                            delay++
                         } else {
-                            delay = 0
-                            breakCounter = 0
-                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            if (backupCounter >= 5) {
-                                sendUpdate()
-                                backupCounter = 0
+                            val cringe0 = selections[0].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
+                            val cringe1 = selections[0].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
+                            // breakCounter 2 and else are for checking ghost blocks
+                            if (breakCounter == 2 && delay != 22 && !(packetAirBlocks.containsAll(cringe0) || packetAirBlocks.containsAll(cringe1))) {
+                                delay++
                             } else {
-                                backupCounter++
+                                packetAirBlocks.clear()
+                                delay = 0
+                                breakCounter = 0
+                                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
+                                if (backupCounter >= 5) {
+                                    sendUpdate()
+                                    backupCounter = 0
+                                } else {
+                                    backupCounter++
+                                }
                             }
                         }
                     }
