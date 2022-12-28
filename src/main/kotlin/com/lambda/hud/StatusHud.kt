@@ -16,7 +16,7 @@ internal object StatusHud : PluginLabelHud(
     override fun SafeClientEvent.updateText() {
         displayText.addLine("State: ${Breaker.state}" )
         val assignment = Breaker.assignment;
-        val layer = Breaker.assignment?.layer ?: 0 // TODO: this is a meaningless default
+        val layer = Breaker.assignment?.layer ?: 0 // TODO: this is a meaningless default <- [gay]
 
         displayText.addLine("Currently Working on Line: $layer")
         if (assignment != null && Breaker.breakState != null) {

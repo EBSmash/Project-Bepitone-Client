@@ -172,7 +172,7 @@ internal object Breaker : PluginModule(
         }
 
         listener<ConnectionEvent.Disconnect> {
-            disconnectHook()
+            disable()
         }
 
         listener<GuiEvent.Displayed> {
@@ -395,9 +395,9 @@ internal object Breaker : PluginModule(
             }
         }
         onDisable {
-            state = State.ASSIGN
             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("stop")
             disconnectHook()
+            state = State.ASSIGN
         }
     }
     enum class State {
@@ -411,6 +411,7 @@ internal object Breaker : PluginModule(
         return -1
     }
     private fun disconnectHook() {
+        state = State.QUEUE
         if (breakState != null) {
             sendUpdate()
         }
