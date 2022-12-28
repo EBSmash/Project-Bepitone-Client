@@ -220,7 +220,7 @@ internal object Breaker : PluginModule(
                             val isEven = if (prevAssignment != null) {
                                 prevAssignment!!.layer % 2 == 1 // we want the opposite of the previous
                             } else {
-                                mc.player.posZ > 0
+                                mc.player.posZ < 0
                             }
                             getAssignmentFromApi(isEven)
                             if (assignment != null) {
