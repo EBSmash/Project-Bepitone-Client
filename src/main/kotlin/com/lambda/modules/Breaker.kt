@@ -109,7 +109,7 @@ internal object Breaker : PluginModule(
         return null
     }
 
-    // only valid during Break state
+    // only valid during Break state HELL NAH!
     private fun sendUpdate() {
         val assign = assignment!!
         val stats = breakState!!
@@ -178,7 +178,7 @@ internal object Breaker : PluginModule(
         }
 
         listener<ConnectionEvent.Disconnect> {
-            disable()
+            disconnectHook()
         }
 
         listener<GuiEvent.Displayed> {
