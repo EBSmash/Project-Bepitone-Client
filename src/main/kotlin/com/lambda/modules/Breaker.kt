@@ -49,7 +49,7 @@ internal object Breaker : PluginModule(
     private var delayReconnect = 0
     var breakState: BreakState? = null
     var blocksMinedTotal = 0 // only used for the hud
-    private var breakCounter = 0 // I don't like this
+    private var breakPhase = BreakPhase.SELECT
     var x = 0
     var z = 0
     var prevAssignment: Assignment? = null
@@ -65,8 +65,7 @@ internal object Breaker : PluginModule(
     private var sel = BetterBlockPos(0,0,0)
     var state: State = State.ASSIGN
     private var firstBlock  = true
-    private var threeCoord: LinkedHashSet<BlockPos> = LinkedHashSet()
-    private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
+    private var selections: Array<LinkedHashSet<BlockPos>>? = null;
     private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState {
@@ -75,6 +74,21 @@ internal object Breaker : PluginModule(
     }
 
     class Assignment(val layer: Int, val baseDepth: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
+
+    enum class State {
+        ASSIGN, TRAVEL, BREAK, QUEUE, LOAD
+    }
+
+    enum class BreakPhase {
+        SELECT, // create the selections and then goto
+        SET_AIR, // after goto, set air to start mining
+        WAIT; // wait til server confirms blocks are broken or on the 1 second delay
+
+        fun next(): BreakPhase {
+            val constants = BreakPhase.values();
+            return constants[(this.ordinal + 1) % constants.size]
+        }
+    }
 
     private fun doApiCall(path: String, method: String): String? {
         MessageSendHelper.sendChatMessage("/${path}")
@@ -253,12 +267,11 @@ internal object Breaker : PluginModule(
                     }
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
-                        selections.clear()
+                        selections = null
                         firstBlock = true
                         if (assignment!!.isFail) {
                             val layer = assignment!!.layer
                              if (failedLayerCounter == 0) {
-                                 selections.clear()
                                  val temp = queue.last().first
                                  var tempZ = 0
                                  var tempX = 0
@@ -301,7 +314,7 @@ internal object Breaker : PluginModule(
                                      failurePosition = 0
 
                                      backupCounter = 20
-                                     breakCounter = 0
+                                     breakPhase = BreakPhase.SELECT
                                      state = State.BREAK
                                  } else {
                                      failedLayerCounter = 1
@@ -310,7 +323,7 @@ internal object Breaker : PluginModule(
                              }
                         } else {
                             backupCounter = 20
-                            breakCounter = 0
+                            breakPhase = BreakPhase.SELECT
                             state = State.BREAK
                         }
                     }
@@ -320,7 +333,7 @@ internal object Breaker : PluginModule(
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
                         val layer = assignment!!.layer
                         val stats = breakState!!
-                        if (breakCounter == 0) {
+                        if (breakPhase == BreakPhase.SELECT) {
                             stats.blocksMinedSinceLastUpdate += brokenBlocksBuf
                             blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
@@ -333,19 +346,17 @@ internal object Breaker : PluginModule(
                                 return@safeListener
                             }
                             val tuple = queue.poll()
-                            threeCoord = tuple.first
-                            if (firstBlock) {
-                                selections.add(threeCoord)
-                                selections.add(threeCoord)
+                            val threeCoord = tuple.first
+                            if (selections == null) {
+                                selections = arrayOf(threeCoord, threeCoord)
                             } else {
-                                selections[1] = selections[0]
-                                selections[0] = threeCoord
+                                selections = arrayOf(threeCoord, selections!![0])
                             }
                             stats.depth = tuple.second
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
                             val lastZ = z
-                            for (coord in selections[1]) {
+                            for (coord in selections!![1]) {
                                 sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
@@ -354,7 +365,7 @@ internal object Breaker : PluginModule(
                                     needToMine = true
                                 }
                             }
-                            for (coord in selections[0]) {
+                            for (coord in selections!![0]) {
                                 sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 z = coord.z
@@ -364,26 +375,30 @@ internal object Breaker : PluginModule(
                                     brokenBlocksBuf++
                                 }
                             }
-                            breakCounter++
                             if (needToMine || firstBlock || kotlin.math.abs(lastZ - z) > 1) {
+                                // what the fuck is this line
                                 if (mc.world.getBlockState(BlockPos(2 + (xOffset + layer * 5), 255 ,z + zOffset + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - z) > 1) { // thanks leijurv papi
-                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${z + zOffset + negPosCheck(layer)}")
                                     firstBlock = false
+                                    // if the chunk is loaded we can trust that it really is air in the selection so we can skip it
+                                    if (mc.world.isChunkGeneratedAt((x + xOffset) shr 4, (z + zOffset) shr 4) && !needToMine) {
+                                        return@safeListener
+                                    }
+                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${z + zOffset + negPosCheck(layer)}")
                                 }
                             }
-                        } else if (breakCounter == 1) {
+                            breakPhase = BreakPhase.SET_AIR
+                        } else if (breakPhase == BreakPhase.SET_AIR) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                            breakCounter++
+                            breakPhase = BreakPhase.WAIT
                         } else {
-                            val cringe0 = selections[0].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
-                            val cringe1 = selections[1].map { BlockPos(it.x + xOffset, it.y, it.z + zOffset)  }
+                            val packetsSayWeGood = selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + xOffset, pos.y, pos.z + zOffset) }) }
                             // breakCounter 2 and else are for checking ghost blocks
-                            if (breakCounter == 2 && delay != 22 && !(packetAirBlocks.containsAll(cringe0) || packetAirBlocks.containsAll(cringe1))) {
+                            if (breakPhase == BreakPhase.WAIT && delay != 22 && !packetsSayWeGood) {
                                 delay++
                             } else {
                                 packetAirBlocks.clear()
                                 delay = 0
-                                breakCounter = 0
+                                breakPhase = BreakPhase.SELECT
                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                                 if (backupCounter >= 5) {
                                     sendUpdate()
@@ -426,9 +441,6 @@ internal object Breaker : PluginModule(
             disconnectHook()
             state = State.ASSIGN
         }
-    }
-    enum class State {
-        ASSIGN, TRAVEL, BREAK, QUEUE, LOAD
     }
 
     private fun negPosCheck(fileNum: Int): Int {
