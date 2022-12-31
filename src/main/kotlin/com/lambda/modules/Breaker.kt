@@ -21,6 +21,7 @@ import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.lang.Integer.max
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -42,30 +43,23 @@ internal object Breaker : PluginModule(
     private var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
     private var brokenBlocksBuf = 0
     private var failedLayerCounter = 0
-    private var delay = 0
-    private var firstLineOfFailedFile : BlockPos = BlockPos(0,0,0)
-    private var loadChunkCount = 15
     private var backupCounter = 20
     private var delayReconnect = 0
     var breakState: BreakState? = null
     var blocksMinedTotal = 0 // only used for the hud
     private var breakPhase = BreakPhase.SELECT
-    var x = 0
-    var z = 0
+    private var waitDelay = 0
     var prevAssignment: Assignment? = null
     var assignment: Assignment? = null
-    private var busy = false
-    private var empty = false
     private var queueSizeDesired = 0
     private var failurePosition = 0
-    const val xOffset = -5000
-    const val zOffset = -5000
+    const val X_OFFSET = -5000
+    const val Z_OFFSET = -5000
     var username: String? = null
     //private val url by setting("Server IP", "bep.babbaj.dev")
-    private var sel = BetterBlockPos(0,0,0)
     var state: State = State.ASSIGN
     private var firstBlock  = true
-    private var selections: Array<LinkedHashSet<BlockPos>>? = null;
+    private var selections: Array<LinkedHashSet<BlockPos>>? = null
     private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState {
@@ -173,10 +167,6 @@ internal object Breaker : PluginModule(
         }
         queueSizeDesired = data.size
 
-        val first = data.getOrNull(0)?.get(0)
-        // TODO: these defaults are nonsense
-        x = first?.x ?: 0
-        z = first?.z ?: 0
         assignment = Assignment(layer, baseDepth, isFail, data)
         prevAssignment = assignment
         breakState = BreakState()
@@ -185,9 +175,6 @@ internal object Breaker : PluginModule(
     init {
         onEnable {
             state = State.ASSIGN
-            busy = false
-            empty = false
-
             username = mc.player.displayNameString
         }
 
@@ -215,15 +202,17 @@ internal object Breaker : PluginModule(
 
         safeListener<TickEvent.ClientTickEvent> {
             val mc = Minecraft.getMinecraft()
-            if (mc.player.dimension == 1 && x != 0 && z != 0) {
+            if (state != State.QUEUE && mc.player.dimension == 1) {
                 disconnectHook()
-            } else if (mc.player.dimension == 1 && state != State.QUEUE) {
                 state = State.QUEUE
+                if (prevAssignment == null) {
+                    disable()
+                }
             }
+
             when (state) {
                 State.ASSIGN -> {
-                    delay = 0
-                    loadChunkCount = 15
+                    waitDelay = 0
                     assignment = null
                     breakState = null
                     username = mc.player.displayNameString
@@ -272,15 +261,8 @@ internal object Breaker : PluginModule(
                         if (assignment!!.isFail) {
                             val layer = assignment!!.layer
                              if (failedLayerCounter == 0) {
-                                 val temp = queue.last().first
-                                 var tempZ = 0
-                                 var tempX = 0
-                                 for (coord in temp) {
-                                     tempZ = coord.z
-                                     tempX = coord.x
-                                 }
-                                 firstLineOfFailedFile = BlockPos(tempX, 255, tempZ)
-                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${tempZ + zOffset + negPosCheck(layer)}")
+                                 val tempZ = queue.last().first.last().z
+                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${tempZ + Z_OFFSET + negPosCheck(layer)}")
                                  failedLayerCounter++
                              } else if (failedLayerCounter == 1) {
                                  val coord = queue.last().first
@@ -288,7 +270,7 @@ internal object Breaker : PluginModule(
                                  for (i in coord) {
                                      tempZ = i.z
                                  }
-                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${tempZ + zOffset + negPosCheck(layer)}")
+                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${tempZ + Z_OFFSET + negPosCheck(layer)}")
                                  failedLayerCounter++
                              } else if (failedLayerCounter == 2) {
                                  val coord = queue.pollLast().first
@@ -355,35 +337,37 @@ internal object Breaker : PluginModule(
                             stats.depth = tuple.second
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
-                            val lastZ = z
                             for (coord in selections!![1]) {
-                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
-                                z = coord.z
-                                x = coord.x
-                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block is BlockObsidian) {
+                                val x = coord.x
+                                val z = coord.z
+                                if (mc.world.getBlockState(BlockPos(x + X_OFFSET,255,z + Z_OFFSET)).block is BlockObsidian) {
                                     needToMine = true
                                 }
                             }
                             for (coord in selections!![0]) {
-                                sel = BetterBlockPos(coord.x + xOffset, 255, coord.z + zOffset)
+                                val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
-                                z = coord.z
-                                x = coord.x
-                                if (mc.world.getBlockState(BlockPos(x + xOffset,255,z + zOffset)).block is BlockObsidian) {
+                                val x = coord.x
+                                val z = coord.z
+                                if (mc.world.getBlockState(BlockPos(x + X_OFFSET,255,z + Z_OFFSET)).block is BlockObsidian) {
                                     needToMine = true
                                     brokenBlocksBuf++
                                 }
                             }
-                            if (needToMine || firstBlock || kotlin.math.abs(lastZ - z) > 1) {
+                            val currentZ = tuple.first.first().z
+                            val currentMiddleX = 2 + layer * 5
+                            val lastZ = assignment!!.data[max(tuple.second, 1) - 1].first().z
+                            if (needToMine || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) {
                                 // what the fuck is this line
-                                if (mc.world.getBlockState(BlockPos(2 + (xOffset + layer * 5), 255 ,z + zOffset + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - z) > 1) { // thanks leijurv papi
+                                if (mc.world.getBlockState(BlockPos(X_OFFSET + currentMiddleX, 255 ,currentZ + Z_OFFSET + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) { // thanks leijurv papi
                                     firstBlock = false
                                     // if the chunk is loaded we can trust that it really is air in the selection so we can skip it
-                                    if (mc.world.isChunkGeneratedAt((x + xOffset) shr 4, (z + zOffset) shr 4) && !needToMine) {
+                                    if (mc.world.isChunkGeneratedAt((currentMiddleX + X_OFFSET) shr 4, (currentZ + Z_OFFSET) shr 4) && !needToMine) {
                                         return@safeListener
                                     }
-                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (xOffset + layer * 5)} 256 ${z + zOffset + negPosCheck(layer)}")
+                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${currentZ + Z_OFFSET + negPosCheck(layer)}")
                                 }
                             }
                             breakPhase = BreakPhase.SET_AIR
@@ -391,13 +375,13 @@ internal object Breaker : PluginModule(
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakPhase = BreakPhase.WAIT
                         } else {
-                            val packetsSayWeGood = selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + xOffset, pos.y, pos.z + zOffset) }) }
+                            val packetsSayWeGood = selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET) }) }
                             // breakCounter 2 and else are for checking ghost blocks
-                            if (breakPhase == BreakPhase.WAIT && delay != 22 && !packetsSayWeGood) {
-                                delay++
+                            if (breakPhase == BreakPhase.WAIT && waitDelay != 22 && !packetsSayWeGood) {
+                                waitDelay++
                             } else {
                                 packetAirBlocks.clear()
-                                delay = 0
+                                waitDelay = 0
                                 breakPhase = BreakPhase.SELECT
                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                                 if (backupCounter >= 5) {
