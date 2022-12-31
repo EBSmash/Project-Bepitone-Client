@@ -202,12 +202,14 @@ internal object Breaker : PluginModule(
 
         safeListener<TickEvent.ClientTickEvent> {
             val mc = Minecraft.getMinecraft()
+
             if (state != State.QUEUE && mc.player.dimension == 1) {
                 disconnectHook()
-                state = State.QUEUE
                 if (prevAssignment == null) {
+                    MessageSendHelper.sendChatMessage("Disabling because in queue with no previous assignment")
                     disable()
                 }
+                state = State.QUEUE // onDisable sets state to assign
             }
 
             when (state) {
