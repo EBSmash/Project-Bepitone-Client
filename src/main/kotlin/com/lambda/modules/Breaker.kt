@@ -18,10 +18,12 @@ import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.init.Blocks
 import net.minecraft.network.play.server.SPacketBlockChange
 import net.minecraft.util.math.BlockPos
+import net.minecraft.world.World
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.lang.Integer.max
+import java.lang.Integer.*
+import java.lang.Math.abs
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -38,12 +40,11 @@ internal object Breaker : PluginModule(
         description = "",
         pluginMain = ExamplePlugin
     ) {
-    private val EXECUTOR = Executors.newCachedThreadPool()
-    // the int is the index in the layer data returned by the api
-    private var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList() // in the future this should be a double ended queue which instead of snaking with files just snakes in the client
+    private val EXECUTOR = Executors.newSingleThreadExecutor()
     private var brokenBlocksBuf = 0
-    private var failedLayerCounter = 0
-    private var backupCounter = 20
+    private var failedLayerTravelPhase = 0
+    var failedLayerPosition = 0
+    private var backupCounter = 5
     private var delayReconnect = 0
     var breakState: BreakState? = null
     var blocksMinedTotal = 0 // only used for the hud
@@ -51,20 +52,27 @@ internal object Breaker : PluginModule(
     private var waitDelay = 0
     var prevAssignment: Assignment? = null
     var assignment: Assignment? = null
-    private var queueSizeDesired = 0
-    private var failurePosition = 0
     const val X_OFFSET = -5000
     const val Z_OFFSET = -5000
     var username: String? = null
-    //private val url by setting("Server IP", "bep.babbaj.dev")
+    private val url by setting("ServerIP", "bep.babbaj.dev")
     var state: State = State.ASSIGN
     private var firstBlock  = true
     private var selections: Array<LinkedHashSet<BlockPos>>? = null
     private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
-    class BreakState {
+    class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
         var blocksMinedSinceLastUpdate = 0 // reset when sending update
-        var depth = 0
+        var depth: Int = startIndex
+
+        // the int is the index in the layer data returned by the api
+        var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList()
+
+        init {
+            for (i in startIndex until data.size) {
+                queue.add(Pair(LinkedHashSet(data[i]), i))
+            }
+        }
     }
 
     class Assignment(val layer: Int, val baseDepth: Int, val isFail: Boolean, val data: List<List<BlockPos>>)
@@ -86,8 +94,7 @@ internal object Breaker : PluginModule(
 
     private fun doApiCall(path: String, method: String): String? {
         MessageSendHelper.sendChatMessage("/${path}")
-        val realUrl = "bep.babbaj.dev";
-        val url = URL("http://$realUrl/$path")
+        val url = URL("http://$url/$path")
         val con = url.openConnection() as HttpURLConnection
         con.requestMethod = method
         con.setRequestProperty("bep-api-key", "48a24e8304a49471404bd036ed7e814bdd59d902d51a47a4bcb090e2fb284f70")
@@ -139,7 +146,6 @@ internal object Breaker : PluginModule(
         val parity = if (isEven) "even" else  "odd"
         val apiResult = doApiCall("assign/${username!!}/$parity", method = "PUT") ?: return
 
-        queue.clear()
         val lines = apiResult.lineSequence().iterator()
         val layer = lines.next().toInt()
         val isFail = lines.next().substring("failed=".length).toBooleanStrict()
@@ -158,18 +164,47 @@ internal object Breaker : PluginModule(
                 data.add(row)
             }
         }
-        queue.clear()
-        // lol
-        repeat((if (isFail) 2 else 1)) {
-            for (i in 0 until data.size) {
-                queue.add(Pair(LinkedHashSet(data[i]), i))
-            }
-        }
-        queueSizeDesired = data.size
-
         assignment = Assignment(layer, baseDepth, isFail, data)
         prevAssignment = assignment
-        breakState = BreakState()
+    }
+
+    private fun isRowAir(world: World, row: List<BlockPos>): Boolean {
+        return row.all { pos -> world.getBlockState(BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET)).block == Blocks.AIR }
+    }
+    private fun isRowOf5Air(world: World, layer: Int, z: Int): Boolean {
+        val start = layer * 5 + X_OFFSET
+        return (start..start + 4).all { x -> world.getBlockState(BlockPos(x, 255, z)).block == Blocks.AIR }
+    }
+
+    private fun startBreakPhase(startDepth: Int) {
+        breakPhase = BreakPhase.SELECT
+        state = State.BREAK
+        breakState = BreakState(assignment!!.data, startDepth)
+        backupCounter = 5
+    }
+
+    private fun startTravelPhase() {
+        state = State.TRAVEL
+        failedLayerTravelPhase = 0
+        failedLayerPosition = 0
+    }
+
+    private fun xOfLayer(layer: Int): Int {
+        return layer * 5 + X_OFFSET
+    }
+
+    private fun negPosCheck(fileNum: Int): Int {
+        if (fileNum % 2 == 0) {
+            return 1
+        }
+        return -1
+    }
+
+    private fun nextZ(z: Int, layer: Int): Int {
+        return if (layer % 2 == 0) z + 1 else z - 1
+    }
+    private fun prevZ(z: Int, layer: Int): Int {
+        return if (layer % 2 == 0) z - 1 else z + 1
     }
 
     init {
@@ -241,13 +276,13 @@ internal object Breaker : PluginModule(
 
                 State.LOAD -> {
                     if (assignment != null) {
-                        failurePosition = 0
-                        state = State.TRAVEL
+                        startTravelPhase()
                     }
                 }
 
                 State.TRAVEL -> {
-                    if (queue.isEmpty()) {
+                    // TODO: this can probably be done earlier
+                    if (assignment!!.data.isEmpty()) {
                         state = State.ASSIGN
                         if (assignment != null) {
                             doApiCall("finish/${assignment!!.layer}", method = "PUT")
@@ -255,88 +290,84 @@ internal object Breaker : PluginModule(
                             assignment = null
                         }
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
+                        return@safeListener
                     }
 
-                    if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive && queue.isNotEmpty()) {
+                    if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
                         selections = null
                         firstBlock = true
-                        if (assignment!!.isFail) {
-                            val layer = assignment!!.layer
-                             if (failedLayerCounter == 0) {
-                                 val tempZ = queue.last().first.last().z
-                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${tempZ + Z_OFFSET + negPosCheck(layer)}")
-                                 failedLayerCounter++
-                             } else if (failedLayerCounter == 1) {
-                                 val coord = queue.last().first
-                                 var tempZ = 0
-                                 for (i in coord) {
-                                     tempZ = i.z
-                                 }
-                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${tempZ + Z_OFFSET + negPosCheck(layer)}")
-                                 failedLayerCounter++
-                             } else if (failedLayerCounter == 2) {
-                                 val coord = queue.pollLast().first
-                                 var completedBlocks = 0
-                                 var totalBlocks = 0
-                                 for (i in coord) {
-                                     totalBlocks++
-                                     if (mc.world.getBlockState(BlockPos(i.x, 255, i.z)).block !is BlockObsidian) {
-                                         completedBlocks++
-                                     }
-                                 }
-                                 if (completedBlocks == totalBlocks || queue.size == queueSizeDesired) {
-                                     while(queue.size != queueSizeDesired) {
-                                         queue.pollLast()
-                                     }
-                                     var positionInQueue = 0
-                                     val positionDifference = queue.size - failurePosition
-                                     while(positionInQueue <= positionDifference) {
-                                         queue.poll()
-                                         positionInQueue++
-                                     }
-                                     failedLayerCounter = 0
-                                     failurePosition = 0
+                        val assignment = assignment!!
+                        if (assignment.isFail) {
+                            val layer = assignment.layer
+                            val middleX = 2 + xOfLayer(layer)
+                            if (failedLayerTravelPhase == 0) {
+                                // get the last row from the data, take the z from the first block
+                                val z = assignment.data.last().first().z
+                                // this is technically not necessary because the main fail travel algorithm will try to go to the same place but this ignores unloaded chunks
+                                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $middleX 256 ${z + Z_OFFSET + negPosCheck(layer)}")
+                                failedLayerTravelPhase++
+                            } else if (failedLayerTravelPhase == 1) {
+                                val playerPos = mc.player.position
 
-                                     backupCounter = 20
-                                     breakPhase = BreakPhase.SELECT
-                                     state = State.BREAK
-                                 } else {
-                                     failedLayerCounter = 1
-                                     failurePosition++
-                                 }
-                             }
+                                // TODO: this stops searching if there is just a 1 block air gap, instead it should stop if there's a full render distance of air
+                                outer@ for (i in failedLayerPosition until assignment.data.size) {
+                                    val row = assignment.data.asReversed()[i]
+                                    val targetZ = row.first().z + Z_OFFSET
+                                    val dz = signum(abs(playerPos.z) - abs(targetZ))
+                                    var z = playerPos.z
+                                    while (z != targetZ + dz) {
+                                        if (mc.world.isChunkGeneratedAt(middleX shr 4, z shr 4)) {
+                                            if ((z == targetZ && isRowAir(mc.world, row)) || isRowOf5Air(world, layer, z)) {
+                                                // the row we want to check is air or is not handicap accessible but the previously checked row is fine so use that for break state
+                                                failedLayerPosition = max(i - 1, 0)
+                                                break@outer
+                                            }
+                                        } else {
+                                            // get closer to what we want to check so we can load more chunks
+                                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $middleX 256 ${nextZ(z, layer) + negPosCheck(layer)}")
+                                            return@safeListener
+                                        }
+                                        z += dz
+                                    }
+                                    failedLayerPosition = i
+                                }
+
+                                // TODO: if failedLayerPosition is 0 we can probably skip break phase
+                                val startIndex = (assignment.data.size - 1) - failedLayerPosition
+                                MessageSendHelper.sendChatMessage("Starting BreakPhase at index $startIndex")
+                                startBreakPhase(startIndex)
+                            }
                         } else {
-                            backupCounter = 20
-                            breakPhase = BreakPhase.SELECT
-                            state = State.BREAK
+                            startBreakPhase(0)
                         }
                     }
                 }
 
                 State.BREAK -> {
                     if (!BaritoneAPI.getProvider().primaryBaritone.builderProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.mineProcess.isActive && !BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
+                        //MessageSendHelper.sendChatMessage("queue = ${queue.size}")
                         val layer = assignment!!.layer
-                        val stats = breakState!!
+                        val bState = breakState!!
                         if (breakPhase == BreakPhase.SELECT) {
-                            stats.blocksMinedSinceLastUpdate += brokenBlocksBuf
+                            bState.blocksMinedSinceLastUpdate += brokenBlocksBuf
                             blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
-                            if (queue.isEmpty()) {
+                            if (bState.queue.isEmpty()) {
                                 sendUpdate()
-                                doApiCall("finish/$layer", method = "PUT")
+                                EXECUTOR.execute{ doApiCall("finish/$layer", method = "PUT") }
                                 breakState = null
                                 assignment = null
                                 state = State.ASSIGN
                                 return@safeListener
                             }
-                            val tuple = queue.poll()
+                            val tuple = bState.queue.poll()
                             val threeCoord = tuple.first
                             if (selections == null) {
                                 selections = arrayOf(threeCoord, threeCoord)
                             } else {
                                 selections = arrayOf(threeCoord, selections!![0])
                             }
-                            stats.depth = tuple.second
+                            bState.depth = tuple.second + 1
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
                             for (coord in selections!![1]) {
@@ -427,13 +458,6 @@ internal object Breaker : PluginModule(
             disconnectHook()
             state = State.ASSIGN
         }
-    }
-
-    private fun negPosCheck(fileNum: Int): Int {
-        if (fileNum % 2 == 0) {
-            return 1
-        }
-        return -1
     }
     private fun disconnectHook() {
         state = State.QUEUE

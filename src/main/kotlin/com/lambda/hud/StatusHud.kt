@@ -24,9 +24,8 @@ internal object StatusHud : PluginLabelHud(
 
         displayText.addLine("Currently Working on Line: $layer")
         if (assignment != null && breakState != null) {
-            val breakSate = breakState
             val totalDepth = assignment.baseDepth + assignment.data.size
-            val currentDepth = assignment.baseDepth + breakSate.depth
+            val currentDepth = assignment.baseDepth + breakState.depth
             displayText.addLine("Depth: $currentDepth/$totalDepth")
         }
         val goalProc: ICustomGoalProcess = BaritoneAPI.getProvider().primaryBaritone.customGoalProcess
