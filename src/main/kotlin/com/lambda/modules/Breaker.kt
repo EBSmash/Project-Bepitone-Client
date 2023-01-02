@@ -431,14 +431,15 @@ internal object Breaker : PluginModule(
                 // await joining server
                     val server = Minecraft.getMinecraft().currentServerData
                     if (server != null) {
-                        if (mc.player.dimension == 0 && delayReconnect != 100 && server.serverIP.contains("2b2t")) {
-                            delayReconnect++
-                        } else if (mc.player.dimension == 0 && delayReconnect == 100 && server.serverIP.contains("2b2t")) {
-                            state = State.ASSIGN
-                            delayReconnect = 0
-                        }
                         if (!server.serverIP.contains("2b2t")) {
                             disable()
+                            return@safeListener
+                        }
+                        if (mc.player.dimension == 0 && delayReconnect != 100) {
+                            delayReconnect++
+                        } else if (mc.player.dimension == 0 && delayReconnect == 100) {
+                            state = State.ASSIGN
+                            delayReconnect = 0
                         }
                     }
                 }
