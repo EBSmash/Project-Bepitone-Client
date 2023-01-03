@@ -44,7 +44,6 @@ internal object Breaker : PluginModule(
     private var brokenBlocksBuf = 0
     private var failedLayerTravelPhase = 0
     var failedLayerPosition = 0
-    private var backupCounter = 5
     private var delayReconnect = 0
     var breakState: BreakState? = null
     var blocksMinedTotal = 0 // only used for the hud
@@ -56,7 +55,6 @@ internal object Breaker : PluginModule(
     var username: String? = null
     private val url by setting("ServerIP", "bep.babbaj.dev")
     var state: State = State.ASSIGN
-    private var firstBlock  = true
     private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
@@ -66,6 +64,8 @@ internal object Breaker : PluginModule(
         var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList()
         var selections: Array<LinkedHashSet<BlockPos>>? = null
         var waitDelay = 0
+        var backupCounter = 5
+        var firstBlock  = true
 
         init {
             for (i in startIndex until data.size) {
@@ -179,7 +179,6 @@ internal object Breaker : PluginModule(
         breakPhase = BreakPhase.SELECT
         state = State.BREAK
         breakState = BreakState(assignment!!.data, startDepth)
-        backupCounter = 5
     }
 
     private fun startTravelPhase() {
@@ -290,7 +289,6 @@ internal object Breaker : PluginModule(
                     }
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                        firstBlock = true
                         if (isFail) {
                             val layer = layer
                             val middleX = 2 + xOfLayer(layer)
