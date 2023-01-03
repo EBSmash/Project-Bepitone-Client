@@ -58,15 +58,14 @@ internal object Breaker : PluginModule(
     private val url by setting("ServerIP", "bep.babbaj.dev")
     var state: State = State.ASSIGN
     private var firstBlock  = true
-    private var selections: Array<LinkedHashSet<BlockPos>>? = null
     private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
         var blocksMinedSinceLastUpdate = 0 // reset when sending update
         var depth: Int = startIndex
-
         // the int is the index in the layer data returned by the api
         var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList()
+        var selections: Array<LinkedHashSet<BlockPos>>? = null
 
         init {
             for (i in startIndex until data.size) {
@@ -294,7 +293,6 @@ internal object Breaker : PluginModule(
                     }
 
                     if (!BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.isActive) {
-                        selections = null
                         firstBlock = true
                         val assignment = assignment!!
                         if (assignment.isFail) {
@@ -353,6 +351,8 @@ internal object Breaker : PluginModule(
                             blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (bState.queue.isEmpty()) {
+                                // fix final stat being off by one
+                                bState.depth = assignment!!.baseDepth + assignment!!.data.size
                                 sendUpdate()
                                 EXECUTOR.execute{ doApiCall("finish/$layer", method = "PUT") }
                                 breakState = null
@@ -362,15 +362,15 @@ internal object Breaker : PluginModule(
                             }
                             val tuple = bState.queue.poll()
                             val threeCoord = tuple.first
-                            if (selections == null) {
-                                selections = arrayOf(threeCoord, threeCoord)
+                            bState.selections = if (bState.selections == null) {
+                                arrayOf(threeCoord, threeCoord)
                             } else {
-                                selections = arrayOf(threeCoord, selections!![0])
+                                arrayOf(threeCoord, bState.selections!![0])
                             }
-                            bState.depth = tuple.second + 1
+                            bState.depth = tuple.second
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
-                            for (coord in selections!![1]) {
+                            for (coord in bState.selections!![1]) {
                                 val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 val x = coord.x
@@ -379,7 +379,7 @@ internal object Breaker : PluginModule(
                                     needToMine = true
                                 }
                             }
-                            for (coord in selections!![0]) {
+                            for (coord in bState.selections!![0]) {
                                 val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
                                 BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 val x = coord.x
@@ -408,7 +408,7 @@ internal object Breaker : PluginModule(
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakPhase = BreakPhase.WAIT
                         } else {
-                            val packetsSayWeGood = selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET) }) }
+                            val packetsSayWeGood = bState.selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET) }) }
                             // breakCounter 2 and else are for checking ghost blocks
                             if (breakPhase == BreakPhase.WAIT && waitDelay != 22 && !packetsSayWeGood) {
                                 waitDelay++
