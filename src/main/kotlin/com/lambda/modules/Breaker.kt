@@ -304,7 +304,7 @@ internal object Breaker : PluginModule(
                                 outer@ for (i in failedLayerPosition until data.size) {
                                     val row = data.asReversed()[i]
                                     val targetZ = row.first().z + Z_OFFSET
-                                    val dz = signum(abs(playerPos.z) - abs(targetZ))
+                                    val dz = compare(targetZ, playerPos.z)
                                     var z = playerPos.z
                                     while (z != targetZ + dz) {
                                         if (mc.world.isChunkGeneratedAt(middleX shr 4, z shr 4)) {
