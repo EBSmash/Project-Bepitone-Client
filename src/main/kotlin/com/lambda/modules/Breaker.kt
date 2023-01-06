@@ -47,7 +47,6 @@ internal object Breaker : PluginModule(
     private var delayReconnect = 0
     var breakState: BreakState? = null
     var blocksMinedTotal = 0 // only used for the hud
-    private var breakPhase = BreakPhase.SELECT
     var prevAssignment: Assignment? = null
     var assignment: Assignment? = null
     const val X_OFFSET = -5000
@@ -55,14 +54,15 @@ internal object Breaker : PluginModule(
     var username: String? = null
     private val url by setting("ServerIP", "bep.babbaj.dev")
     var state: State = State.ASSIGN
-    private val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
 
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
+        var breakPhase = BreakPhase.SELECT
         var blocksMinedSinceLastUpdate = 0 // reset when sending update
         var depth: Int = startIndex
         // the int is the index in the layer data returned by the api
         var queue: Deque<Pair<LinkedHashSet<BlockPos>, Int>> = LinkedList()
         var selections: Array<LinkedHashSet<BlockPos>>? = null
+        val packetAirBlocks: MutableSet<BlockPos> = ConcurrentHashMap.newKeySet() // blocks that an SPacketBlockChange says is air
         var waitDelay = 0
         var backupCounter = 5
         var firstBlock  = true
@@ -86,7 +86,7 @@ internal object Breaker : PluginModule(
         WAIT; // wait til server confirms blocks are broken or on the 1 second delay
 
         fun next(): BreakPhase {
-            val constants = BreakPhase.values();
+            val constants = BreakPhase.values()
             return constants[(this.ordinal + 1) % constants.size]
         }
     }
@@ -152,7 +152,7 @@ internal object Breaker : PluginModule(
 
         val data = mutableListOf<List<BlockPos>>()
         lines.forEach { line ->
-            if (!line.isEmpty()) {
+            if (line.isNotEmpty()) {
                 val row = mutableListOf<BlockPos>()
                 for (pair in line.split("#")) {
                     val numSplit = pair.split(" ")
@@ -176,7 +176,6 @@ internal object Breaker : PluginModule(
     }
 
     private fun startBreakPhase(startDepth: Int) {
-        breakPhase = BreakPhase.SELECT
         state = State.BREAK
         breakState = BreakState(assignment!!.data, startDepth)
     }
@@ -222,12 +221,12 @@ internal object Breaker : PluginModule(
         }
 
         listener<PacketEvent.PostReceive> { event ->
-            if (event.packet is SPacketBlockChange) {
+            if (event.packet is SPacketBlockChange && breakState != null) {
                 val packet = event.packet as SPacketBlockChange
                 if (packet.getBlockState().getBlock() == Blocks.AIR) {
                     val pos = packet.getBlockPosition()
                     if (pos.y == 255) {
-                        packetAirBlocks.add(pos)
+                        breakState!!.packetAirBlocks.add(pos)
                     }
                 }
             }
@@ -257,11 +256,11 @@ internal object Breaker : PluginModule(
                             val isEven = if (prevAssignment != null) {
                                 prevAssignment!!.layer % 2 == 1 // we want the opposite of the previous
                             } else {
-                                mc.player.posZ < 0
+                                mc.player.posZ < 0 // even rows start at low Z and mine towards high Z
                             }
                             getAssignmentFromApi(isEven)
                             if (assignment != null) with(assignment!!) {
-                                MessageSendHelper.sendChatMessage("Got layer ${layer}, Depth = ${baseDepth}, ${data.size} rows, failed = ${isFail}")
+                                MessageSendHelper.sendChatMessage("Got layer $layer, Depth = $baseDepth, ${data.size} rows, failed = $isFail")
                             }
                         } catch (ex: Exception) {
                             MessageSendHelper.sendChatMessage("getAssignmentFromApi threw an exception ($ex)")
@@ -281,7 +280,7 @@ internal object Breaker : PluginModule(
                     // TODO: this can probably be done earlier
                     if (data.isEmpty()) {
                         state = State.ASSIGN
-                        doApiCall("finish/${assignment!!.layer}", method = "PUT")
+                        doApiCall("finish/$layer", method = "PUT")
                         breakState = null
                         assignment = null
                         MessageSendHelper.sendChatMessage("Task Queue is empty, requesting more assignments")
