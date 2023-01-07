@@ -53,6 +53,7 @@ internal object Breaker : PluginModule(
     const val Z_OFFSET = -5000
     var username: String? = null
     private val url by setting("ServerIP", "bep.babbaj.dev")
+    private val autoAssign by setting("AutoAssign", true)
     var state: State = State.ASSIGN
 
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
@@ -246,6 +247,7 @@ internal object Breaker : PluginModule(
 
             when (state) {
                 State.ASSIGN -> {
+                    if (!autoAssign) return@safeListener
                     assignment = null
                     breakState = null
                     username = mc.player.displayNameString
@@ -304,7 +306,7 @@ internal object Breaker : PluginModule(
                                 outer@ for (i in failedLayerPosition until data.size) {
                                     val row = data.asReversed()[i]
                                     val targetZ = row.first().z + Z_OFFSET
-                                    val dz = compare(targetZ, playerPos.z)
+                                    val dz = compare(targetZ, playerPos.z) // same as signum(targetZ - playerPos.z)
                                     var z = playerPos.z
                                     while (z != targetZ + dz) {
                                         if (mc.world.isChunkGeneratedAt(middleX shr 4, z shr 4)) {
