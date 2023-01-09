@@ -355,13 +355,20 @@ internal object Breaker : PluginModule(
                                 return@safeListener
                             }
                             val tuple = queue.poll()
-                            val threeCoord = tuple.first
-                            selections = if (selections == null) {
-                                arrayOf(threeCoord, threeCoord)
+                            val row = tuple.first
+                            val dataIndex = tuple.second
+                            depth = dataIndex
+                            selections = if (dataIndex == 0) {
+                                arrayOf(row, row)
                             } else {
-                                arrayOf(threeCoord, selections!![0])
+                                val prevRow = assignment!!.data[dataIndex - 1]
+                                val prevZ = prevRow[0].z
+                                if (abs(prevZ - row.first().z) <= 1) {
+                                    arrayOf(row, LinkedHashSet(prevRow))
+                                } else {
+                                    arrayOf(row, row)
+                                }
                             }
-                            depth = tuple.second
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             var needToMine = false
                             for (coord in selections!![1]) {
@@ -385,7 +392,7 @@ internal object Breaker : PluginModule(
                             }
                             val currentZ = tuple.first.first().z
                             val currentMiddleX = 2 + layer * 5
-                            val lastZ = assignment!!.data[max(tuple.second, 1) - 1].first().z
+                            val lastZ = assignment!!.data[max(dataIndex, 1) - 1].first().z
                             if (needToMine || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) {
                                 // what the fuck is this line
                                 if (mc.world.getBlockState(BlockPos(X_OFFSET + currentMiddleX, 255 ,currentZ + Z_OFFSET + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) { // thanks leijurv papi
@@ -425,7 +432,7 @@ internal object Breaker : PluginModule(
                 // await joining server
                     val server = Minecraft.getMinecraft().currentServerData
                     if (server != null) {
-                        if (!server.serverIP.contains("2b2t")) {
+                        if (!server.serverIP.contains("2b2t") && !server.serverIP.contains("proxy")) {
                             disable()
                             return@safeListener
                         }
