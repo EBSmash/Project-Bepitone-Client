@@ -204,7 +204,17 @@ internal object Breaker : PluginModule(
     private fun prevZ(z: Int, layer: Int): Int {
         return if (layer % 2 == 0) z - 1 else z + 1
     }
-
+    private fun finishBreak() {
+        with(breakState!!) {
+            // fix final stat being off by one
+            depth = assignment!!.baseDepth + assignment!!.data.size
+            sendUpdate()
+            EXECUTOR.execute { doApiCall("finish/${assignment!!.layer}", method = "PUT") }
+            breakState = null
+            assignment = null
+            state = State.ASSIGN
+        }
+    }
     init {
         onEnable {
             state = State.ASSIGN
@@ -345,13 +355,7 @@ internal object Breaker : PluginModule(
                             blocksMinedTotal += brokenBlocksBuf
                             brokenBlocksBuf = 0
                             if (queue.isEmpty()) {
-                                // fix final stat being off by one
-                                depth = assignment!!.baseDepth + assignment!!.data.size
-                                sendUpdate()
-                                EXECUTOR.execute{ doApiCall("finish/$layer", method = "PUT") }
-                                breakState = null
-                                assignment = null
-                                state = State.ASSIGN
+                                finishBreak()
                                 return@safeListener
                             }
                             val tuple = queue.poll()
@@ -390,15 +394,21 @@ internal object Breaker : PluginModule(
                                     brokenBlocksBuf++
                                 }
                             }
-                            val currentZ = tuple.first.first().z
+                            val currentZ = row.first().z
                             val currentMiddleX = 2 + layer * 5
-                            val lastZ = assignment!!.data[max(dataIndex, 1) - 1].first().z
+                            val lastZ = assignment!!.data[max(dataIndex - 1, 0)].first().z
                             if (needToMine || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) {
-                                // what the fuck is this line
+                                // if we can stand on the block we want to goto or we are are in a state where we can't assume we are close to the layer
                                 if (mc.world.getBlockState(BlockPos(X_OFFSET + currentMiddleX, 255 ,currentZ + Z_OFFSET + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) { // thanks leijurv papi
                                     firstBlock = false
                                     // if the chunk is loaded we can trust that it really is air in the selection so we can skip it
-                                    if (mc.world.isChunkGeneratedAt((currentMiddleX + X_OFFSET) shr 4, (currentZ + Z_OFFSET) shr 4) && !needToMine) {
+                                    val isRowLoaded = mc.world.isChunkGeneratedAt((currentMiddleX + X_OFFSET) shr 4, (currentZ + Z_OFFSET) shr 4)
+                                    if (isRowLoaded && !needToMine) {
+                                        return@safeListener
+                                    }
+                                    // if the row is in unloaded chunks and there isn't a gap between the previous, then the rest of the layer from what we can see is all air, and we will assume that the rest of the entire layer is air
+                                    if (!isRowLoaded && kotlin.math.abs(lastZ - currentZ) <= 1) {
+                                        finishBreak()
                                         return@safeListener
                                     }
                                     BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${currentZ + Z_OFFSET + negPosCheck(layer)}")
