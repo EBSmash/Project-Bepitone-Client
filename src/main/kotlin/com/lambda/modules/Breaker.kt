@@ -407,10 +407,10 @@ internal object Breaker : PluginModule(
                                         return@safeListener
                                     }
                                     // if the row is in unloaded chunks and there isn't a gap between the previous, then the rest of the layer from what we can see is all air, and we will assume that the rest of the entire layer is air
-                                    if (!isRowLoaded && kotlin.math.abs(lastZ - currentZ) <= 1) {
+                                    /*if (!isRowLoaded && kotlin.math.abs(lastZ - currentZ) == 1) {
                                         finishBreak()
                                         return@safeListener
-                                    }
+                                    }*/
                                     BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${currentZ + Z_OFFSET + negPosCheck(layer)}")
                                 }
                             }
