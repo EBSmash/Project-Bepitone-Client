@@ -1,8 +1,11 @@
 package com.lambda.modules
 
 import baritone.api.BaritoneAPI
+import baritone.api.pathing.goals.Goal
+import baritone.api.pathing.goals.GoalXZ
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
+import com.lambda.RoofGoal
 import com.lambda.client.event.events.ConnectionEvent
 import com.lambda.client.event.events.GuiEvent
 import com.lambda.client.event.events.PacketEvent
@@ -215,6 +218,10 @@ internal object Breaker : PluginModule(
             state = State.ASSIGN
         }
     }
+
+    private fun goto(x: Int, z: Int) {
+        BaritoneAPI.getProvider().primaryBaritone.customGoalProcess.setGoalAndPath(RoofGoal(GoalXZ(x, z)))
+    }
     init {
         onEnable {
             state = State.ASSIGN
@@ -307,7 +314,7 @@ internal object Breaker : PluginModule(
                                 // get the last row from the data, take the z from the first block
                                 val z = data.last().first().z
                                 // this is technically not necessary because the main fail travel algorithm will try to go to the same place but this ignores unloaded chunks
-                                BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $middleX 256 ${z + Z_OFFSET + negPosCheck(layer)}")
+                                goto(middleX, z + Z_OFFSET + negPosCheck(layer))
                                 failedLayerTravelPhase++
                             } else if (failedLayerTravelPhase == 1) {
                                 val playerPos = mc.player.position
@@ -329,7 +336,7 @@ internal object Breaker : PluginModule(
                                             }
                                         } else {
                                             // get closer to what we want to check so we can load more chunks
-                                            BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto $middleX 256 ${nextZ(z, layer) + negPosCheck(layer)}")
+                                            goto(middleX, nextZ(z, layer) + negPosCheck(layer))
                                             return@safeListener
                                         }
                                         z += dz
@@ -413,7 +420,7 @@ internal object Breaker : PluginModule(
                                         finishBreak()
                                         return@safeListener
                                     }*/
-                                    BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("goto ${2 + (X_OFFSET + layer * 5)} 256 ${currentZ + Z_OFFSET + negPosCheck(layer)}")
+                                    goto(2 + (X_OFFSET + layer * 5), currentZ + Z_OFFSET + negPosCheck(layer))
                                 }
                             }
                             breakPhase = BreakPhase.SET_AIR
