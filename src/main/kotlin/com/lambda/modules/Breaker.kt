@@ -324,6 +324,8 @@ internal object Breaker : PluginModule(
                                                 // the row we want to check is air or is not handicap accessible but the previously checked row is fine so use that for break state
                                                 failedLayerPosition = max(i - 1, 0)
                                                 break@outer
+                                            } else {
+                                                failedLayerPosition = i
                                             }
                                         } else {
                                             // get closer to what we want to check so we can load more chunks
