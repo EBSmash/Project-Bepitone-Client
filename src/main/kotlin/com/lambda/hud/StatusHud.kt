@@ -1,13 +1,12 @@
 package com.lambda.hud
 
 import baritone.api.BaritoneAPI
-import baritone.api.pathing.goals.GoalBlock
 import baritone.api.process.ICustomGoalProcess
 import com.lambda.ExamplePlugin
+import com.lambda.RoofGoal
 import com.lambda.client.event.SafeClientEvent
 import com.lambda.client.plugin.api.PluginLabelHud
 import com.lambda.modules.Breaker
-import net.minecraft.util.math.BlockPos
 
 internal object StatusHud : PluginLabelHud(
     name = "BepitoneStatus",
@@ -30,9 +29,11 @@ internal object StatusHud : PluginLabelHud(
         }
         val goalProc: ICustomGoalProcess = BaritoneAPI.getProvider().primaryBaritone.customGoalProcess
         if (goalProc.isActive) {
-            if (goalProc.goal is GoalBlock) {
-                val goal: BlockPos = (goalProc.goal as GoalBlock).goalPos
+            if (goalProc.goal is RoofGoal) {
+                val goal = (goalProc.goal as RoofGoal).goal
                 displayText.addLine("Going to ${goal.x} ${goal.z}")
+            } else {
+                displayText.addLine("Going to ${goalProc.goal}")
             }
         }
 

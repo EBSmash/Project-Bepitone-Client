@@ -252,6 +252,16 @@ internal object Breaker : PluginModule(
 
         safeListener<TickEvent.ClientTickEvent> {
             val mc = Minecraft.getMinecraft()
+            if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL) && mc.player.dimension == 0) { // if player falls
+                try {
+                    MessageSendHelper.sendChatMessage("Disabling because below y 200")
+                    disconnectHook()
+                    disable()
+                    return@safeListener
+                } catch (e: Exception) {
+                    println("Running bepatone shutdown hook failed")
+                }
+            }
 
             if (state != State.QUEUE && mc.player.dimension == 1) {
                 disconnectHook()
@@ -462,15 +472,6 @@ internal object Breaker : PluginModule(
                             delayReconnect = 0
                         }
                     }
-                }
-            }
-            if (player.posY < 200 && (state == State.BREAK || state == State.TRAVEL) && mc.player.dimension == 0) { // if player falls
-                try {
-                    MessageSendHelper.sendChatMessage("Disabling because below y 200")
-                    disconnectHook()
-                    disable()
-                } catch (e: Exception) {
-                    println("Running bepatone shutdown hook failed")
                 }
             }
         }
