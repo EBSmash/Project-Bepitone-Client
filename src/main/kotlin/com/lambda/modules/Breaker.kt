@@ -12,6 +12,7 @@ import com.lambda.client.event.events.PacketEvent
 import com.lambda.client.event.listener.listener
 import com.lambda.client.module.Category
 import com.lambda.client.plugin.api.PluginModule
+import com.lambda.client.util.Timer
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.block.BlockAir
@@ -22,6 +23,7 @@ import net.minecraft.init.Blocks
 import net.minecraft.network.play.server.SPacketBlockChange
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
+import net.minecraftforge.client.event.ClientChatReceivedEvent
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -30,8 +32,7 @@ import java.lang.Math.abs
 import java.net.ConnectException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Deque
-import java.util.LinkedList
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.collections.LinkedHashSet
@@ -58,6 +59,10 @@ internal object Breaker : PluginModule(
     private val url by setting("ServerIP", "bep.babbaj.dev")
     private val autoAssign by setting("AutoAssign", true)
     var state: State = State.ASSIGN
+
+
+    //bepnet
+    var beptimer = Timer();
 
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
         var breakPhase = BreakPhase.SELECT
@@ -480,6 +485,17 @@ internal object Breaker : PluginModule(
             disconnectHook()
             state = State.ASSIGN
         }
+
+
+
+        safeListener<ClientChatReceivedEvent> {
+            if (it.message.formattedText.lowercase(Locale.getDefault()).contains("bep")){
+                if (beptimer.time < 60000) return@safeListener
+                player.sendChatMessage("bep")
+                beptimer.reset()
+            }
+        }
+
     }
     private fun disconnectHook() {
         state = State.QUEUE
