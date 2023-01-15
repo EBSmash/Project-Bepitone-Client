@@ -487,7 +487,7 @@ internal object Breaker : PluginModule(
         }
 
 
-
+        /*
         safeListener<ClientChatReceivedEvent> {
             if (it.message.formattedText.lowercase(Locale.getDefault()).contains("bep")){
                 if (beptimer.time < 60000) return@safeListener
@@ -495,6 +495,7 @@ internal object Breaker : PluginModule(
                 beptimer.reset()
             }
         }
+         */
 
     }
     private fun disconnectHook() {
