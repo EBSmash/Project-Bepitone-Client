@@ -145,6 +145,11 @@ internal object Scanner : PluginModule(
                 MessageSendHelper.sendChatMessage("Please disable Bepitone Breaker before using scanner.")
                 disable()
             }
+            val mc = Minecraft.getMinecraft()
+            if (mc.player.displayNameString != "DanDucky") {
+                MessageSendHelper.sendChatMessage("YOU CANNOT GET DIS")
+                disable()
+            }
         }
         listener<ConnectionEvent.Disconnect> {
             disable()
