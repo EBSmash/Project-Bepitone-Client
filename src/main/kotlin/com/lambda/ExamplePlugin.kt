@@ -10,7 +10,7 @@ internal object ExamplePlugin : Plugin() {
     override fun onLoad() {
         // Load any modules, commands, or HUD elements here
         modules.add(Breaker)
-//        modules.add(Scanner)
+        modules.add(Scanner)
         hudElements.add(StatusHud)
 
 
