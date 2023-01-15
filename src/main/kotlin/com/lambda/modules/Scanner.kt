@@ -46,7 +46,7 @@ internal object Scanner : PluginModule(
 
     private fun finish() {
         // fix final stat being off by one
-        thread { doApiCall("finish/${file}", method = "PUT") }
+        thread { doApiCall("insert_layer/${file}/true", method = "PUT") }
     }
     private fun doApiCall(path: String, method: String): String? {
         MessageSendHelper.sendChatMessage("/${path}")
@@ -80,9 +80,7 @@ internal object Scanner : PluginModule(
         return null
     }
     private fun logFailed (fileNum : Int) {
-        val outputFile = File("${mc.gameDir}/failedscanner/failed.bep")
-        outputFile.createNewFile()
-        outputFile.appendText("$fileNum\n")
+        doApiCall("insert_layer/${fileNum}/false", "PUT")
     }
     private fun requestNewFile() {
         thread {
@@ -147,11 +145,6 @@ internal object Scanner : PluginModule(
                 MessageSendHelper.sendChatMessage("Please disable Bepitone Breaker before using scanner.")
                 disable()
             }
-            val mainDirectory = File("${mc.gameDir}/failedscanner/")
-            try {
-                mainDirectory.mkdir()
-                print("Creating new keekerclient config folder for keeklogger")
-            } catch (e: FileAlreadyExistsException) {}
         }
         listener<ConnectionEvent.Disconnect> {
             disable()
@@ -211,7 +204,6 @@ internal object Scanner : PluginModule(
                         }
                         if (incomplete) {
                             logFailed(file)
-                            MessageSendHelper.sendChatMessage("Found failed layer")
                         } else {
                             finish()
                         }
