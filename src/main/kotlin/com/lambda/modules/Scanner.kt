@@ -1,7 +1,6 @@
 package com.lambda.modules
 
 import baritone.api.BaritoneAPI
-import baritone.api.selection.ISelection
 import baritone.api.utils.BetterBlockPos
 import com.lambda.ExamplePlugin
 import com.lambda.client.event.events.ConnectionEvent
@@ -17,7 +16,6 @@ import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
-import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
 import java.net.ConnectException
@@ -29,7 +27,7 @@ import kotlin.collections.LinkedHashSet
 import kotlin.concurrent.thread
 
 internal object Scanner : PluginModule(
-    name = "Bepitone Scanner",
+    name = "BepitoneScanner",
     category = Category.MISC,
     description = "X3 owo",
     pluginMain = ExamplePlugin
