@@ -288,7 +288,11 @@ internal object Breaker : PluginModule(
                         try {
                             MessageSendHelper.sendChatMessage("Requesting assignment from the API")
                             val isEven = if (prevAssignment != null) {
-                                prevAssignment!!.layer % 2 == 1 // we want the opposite of the previous
+                                if (prevAssignment!!.isFail) {
+                                    prevAssignment!!.layer % 2 == 0
+                                } else {
+                                    prevAssignment!!.layer % 2 == 1 // we want the opposite of the previous
+                                }
                             } else {
                                 mc.player.posZ < 0 // even rows start at low Z and mine towards high Z
                             }
