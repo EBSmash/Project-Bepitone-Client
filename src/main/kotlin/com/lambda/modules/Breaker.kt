@@ -177,11 +177,17 @@ internal object Breaker : PluginModule(
     }
 
     private fun isRowAir(world: World, row: List<BlockPos>): Boolean {
-        return row.all { pos -> world.getBlockState(BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET)).block == Blocks.AIR }
+        return row.all { pos ->
+            val block = world.getBlockState(BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET)).block
+            return block == Blocks.AIR || block == Blocks.SNOW_LAYER
+        }
     }
     private fun isRowOf5Air(world: World, layer: Int, z: Int): Boolean {
         val start = layer * 5 + X_OFFSET
-        return (start..start + 4).all { x -> world.getBlockState(BlockPos(x, 255, z)).block == Blocks.AIR }
+        return (start..start + 4).all { x ->
+            val block = world.getBlockState(BlockPos(x, 255, z)).block
+            return block == Blocks.AIR || block == Blocks.SNOW_LAYER
+        }
     }
 
     private fun startBreakPhase(startDepth: Int) {
@@ -217,7 +223,7 @@ internal object Breaker : PluginModule(
             // fix final stat being off by one
             depth = assignment!!.baseDepth + assignment!!.data.size
             sendUpdate()
-            EXECUTOR.execute { doApiCall("finish/${assignment!!.layer}", method = "PUT") }
+            //EXECUTOR.execute { doApiCall("finish/${assignment!!.layer}", method = "PUT") }
             breakState = null
             assignment = null
             state = State.ASSIGN
@@ -332,29 +338,31 @@ internal object Breaker : PluginModule(
                                 goto(middleX, z + Z_OFFSET + negPosCheck(layer))
                                 failedLayerTravelPhase++
                             } else if (failedLayerTravelPhase == 1) {
-                                val playerPos = mc.player.position
-
-                                // TODO: this stops searching if there is just a 1 block air gap, instead it should stop if there's a full render distance of air
+                                var foundSolidRow = false
+                                var foundAirRow = false
                                 outer@ for (i in failedLayerPosition until data.size) {
                                     val row = data.asReversed()[i]
-                                    val targetZ = row.first().z + Z_OFFSET
-                                    val dz = compare(targetZ, playerPos.z) // same as signum(targetZ - playerPos.z)
-                                    var z = playerPos.z
-                                    while (z != targetZ + dz) {
-                                        if (mc.world.isChunkGeneratedAt(middleX shr 4, z shr 4)) {
-                                            if ((z == targetZ && isRowAir(mc.world, row)) || isRowOf5Air(world, layer, z)) {
-                                                // the row we want to check is air or is not handicap accessible but the previously checked row is fine so use that for break state
-                                                failedLayerPosition = max(i - 1, 0)
-                                                break@outer
-                                            } else {
-                                                failedLayerPosition = i
-                                            }
+                                    val z = row.first().z + Z_OFFSET
+
+                                    if (mc.world.isChunkGeneratedAt(middleX shr 4, z shr 4)) {
+                                        if (!isRowAir(mc.world, row)) {
+                                            foundSolidRow = true
                                         } else {
-                                            // get closer to what we want to check so we can load more chunks
-                                            goto(middleX, nextZ(z, layer) + negPosCheck(layer))
-                                            return@safeListener
+                                            foundAirRow = true
                                         }
-                                        z += dz
+                                    } else if (foundSolidRow || !foundAirRow) {
+                                        // get closer to what we want to check so we can load more chunks
+                                        failedLayerPosition = i
+                                        goto(middleX, nextZ(z, layer))
+                                        MessageSendHelper.sendChatMessage("goto $failedLayerPosition x = $middleX z = ${nextZ(z, layer)}")
+                                        if (!foundAirRow) {
+                                            MessageSendHelper.sendChatMessage("baritone pathing failed idiot")
+                                        }
+                                        return@safeListener
+                                    } else if (foundAirRow) { // only break early if we have actually tried to look for and found air rows
+                                        break
+                                    } else { // no scanning happened, probably because goto didnt actually move us
+                                        return@safeListener
                                     }
                                     failedLayerPosition = i
                                 }
