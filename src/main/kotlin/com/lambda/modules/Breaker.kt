@@ -364,7 +364,6 @@ internal object Breaker : PluginModule(
                                     } else { // no scanning happened, probably because goto didnt actually move us
                                         return@safeListener
                                     }
-                                    failedLayerPosition = i
                                 }
 
                                 // TODO: if failedLayerPosition is 0 we can probably skip break phase
