@@ -16,6 +16,7 @@ import com.lambda.client.util.Timer
 import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.block.BlockAir
+import net.minecraft.block.BlockLiquid
 import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
@@ -24,6 +25,7 @@ import net.minecraft.network.play.server.SPacketBlockChange
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
 import net.minecraftforge.client.event.ClientChatReceivedEvent
+import net.minecraftforge.fluids.IFluidBlock
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -408,20 +410,20 @@ internal object Breaker : PluginModule(
                             var needToMine = false
                             for (coord in selections!![1]) {
                                 val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
-                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
-                                val x = coord.x
-                                val z = coord.z
-                                if (mc.world.getBlockState(BlockPos(x + X_OFFSET,255,z + Z_OFFSET)).block is BlockObsidian) {
+                                if (mc.world.getBlockState(sel).block !is BlockLiquid &&
+                                    mc.world.getBlockState(sel).block !is BlockAir &&
+                                    mc.world.getBlockState(sel).block !is IFluidBlock) { // pretty much just "not water"
                                     needToMine = true
+                                    BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 }
                             }
                             for (coord in selections!![0]) {
                                 val sel = BetterBlockPos(coord.x + X_OFFSET, 255, coord.z + Z_OFFSET)
-                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
-                                val x = coord.x
-                                val z = coord.z
-                                if (mc.world.getBlockState(BlockPos(x + X_OFFSET,255,z + Z_OFFSET)).block is BlockObsidian) {
+                                if (mc.world.getBlockState(sel).block !is BlockLiquid &&
+                                    mc.world.getBlockState(sel).block !is BlockAir &&
+                                    mc.world.getBlockState(sel).block !is IFluidBlock) {
                                     needToMine = true
+                                    BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                     brokenBlocksBuf++
                                 }
                             }
