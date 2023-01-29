@@ -16,6 +16,7 @@ import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
 import net.minecraftforge.fml.common.gameevent.TickEvent
 import java.io.BufferedReader
+import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
 import java.net.ConnectException
@@ -36,6 +37,7 @@ internal object Scanner : PluginModule(
     private var queue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
     private val url = "localhost:8000"
     private val urlMain = "bep.babbaj.dev"
+    private val logToFile by setting("Log To File", false)
     private var currentFile = 0
     private var finishedWithFile = false
     private var state : CheckState = CheckState.REQUEST
@@ -44,6 +46,7 @@ internal object Scanner : PluginModule(
 
     private fun finish() {
         // fix final stat being off by one
+        if (logToFile) return
         thread { doApiCall("insert_layer/${file}/true", method = "PUT") }
     }
     private fun doApiCall(path: String, method: String): String? {
@@ -78,7 +81,13 @@ internal object Scanner : PluginModule(
         return null
     }
     private fun logFailed (fileNum : Int) {
-        doApiCall("insert_layer/${fileNum}/false", "PUT")
+        if (logToFile) {
+        val outputFile = File("${mc.gameDir}/failedscanner/failed.bep")
+        outputFile.createNewFile()
+        outputFile.appendText("$fileNum\n")
+        } else {
+            doApiCall("insert_layer/${fileNum}/false", "PUT")
+        }
     }
     private fun requestNewFile() {
         thread {
@@ -147,6 +156,14 @@ internal object Scanner : PluginModule(
             if (mc.player.displayNameString != "DanDucky") {
                 MessageSendHelper.sendChatMessage("YOU CANNOT GET DIS")
                 disable()
+            }
+            if (logToFile) {
+                val mainDirectory = File("${mc.gameDir}/failedscanner/")
+                try {
+                    mainDirectory.mkdir()
+                    print("Creating new keekerclient config folder for keeklogger")
+                } catch (e: FileAlreadyExistsException) {
+                }
             }
         }
         listener<ConnectionEvent.Disconnect> {
