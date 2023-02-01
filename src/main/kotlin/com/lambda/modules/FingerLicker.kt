@@ -48,6 +48,7 @@ internal object FingerLicker : PluginModule(
     private var breakPhase : BreakPhase = BreakPhase.SELECT
     private var firstBlock = true
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
+    private var waitDelay = 0
     private fun fileFromCoordinate (x : Int) : Int {
         return x / 5
     }
@@ -302,43 +303,22 @@ internal object FingerLicker : PluginModule(
                             }
                             val currentZ = layer.first().z
                             val currentMiddleX = 2 + (fileFromCoordinate(layer.first().x) * 5)
-                            if (needToMine || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) {
+                            if (needToMine) {
                                 // if we can stand on the block we want to goto or we are are in a state where we can't assume we are close to the layer
-                                if (mc.world.getBlockState(BlockPos(Breaker.X_OFFSET + currentMiddleX, 255 ,currentZ + Breaker.Z_OFFSET + negPosCheck(layer))) !is BlockAir || firstBlock || kotlin.math.abs(lastZ - currentZ) > 1) { // thanks leijurv papi
-                                    firstBlock = false
-                                    // if the chunk is loaded we can trust that it really is air in the selection so we can skip it
-                                    val isRowLoaded = mc.world.isChunkGeneratedAt((currentMiddleX + Breaker.X_OFFSET) shr 4, (currentZ + Breaker.Z_OFFSET) shr 4)
-                                    if (isRowLoaded && !needToMine) {
-                                        return@safeListener
-                                    }
-                                    // if the row is in unloaded chunks and there isn't a gap between the previous, then the rest of the layer from what we can see is all air, and we will assume that the rest of the entire layer is air
-                                    /*if (!isRowLoaded && kotlin.math.abs(lastZ - currentZ) == 1) {
-                                        finishBreak()
-                                        return@safeListener
-                                    }*/
-                                    goto(2 + (Breaker.X_OFFSET + layer * 5), currentZ + Breaker.Z_OFFSET + negPosCheck(layer))
-                                }
+                                goto(Breaker.X_OFFSET + currentMiddleX, currentZ + Breaker.Z_OFFSET + negPosCheck(fileFromCoordinate(layer.first().x)))
                             }
                             breakPhase = BreakPhase.SET_AIR
                         } else if (breakPhase == BreakPhase.SET_AIR) {
                             BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
                             breakPhase = BreakPhase.WAIT
+                            waitDelay = 0
                         } else {
-                            val packetsSayWeGood = selections!!.any { sel -> packetAirBlocks.containsAll(sel.map { pos -> BlockPos(pos.x + X_OFFSET, pos.y, pos.z + Z_OFFSET) }) }
-                            // breakCounter 2 and else are for checking ghost blocks
-                            if (breakPhase == BreakPhase.WAIT && waitDelay != 22 && !packetsSayWeGood) {
+                            if (waitDelay != 22) {
                                 waitDelay++
                             } else {
-                                packetAirBlocks.clear()
                                 waitDelay = 0
                                 breakPhase = BreakPhase.SELECT
                                 BaritoneAPI.getProvider().primaryBaritone.commandManager.execute("sel set air")
-                                if (backupCounter >= 5) {
-                                    sendUpdate()
-                                    backupCounter = 0
-                                } else {
-                                    backupCounter++
-                                }
                             }
                         }
                     }
