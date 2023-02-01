@@ -62,10 +62,6 @@ internal object Breaker : PluginModule(
     private val autoAssign by setting("AutoAssign", true)
     var state: State = State.ASSIGN
 
-
-    //bepnet
-    var beptimer = Timer();
-
     class BreakState(data: List<List<BlockPos>>, startIndex: Int) {
         var breakPhase = BreakPhase.SELECT
         var blocksMinedSinceLastUpdate = 0 // reset when sending update
@@ -494,18 +490,6 @@ internal object Breaker : PluginModule(
             disconnectHook()
             state = State.ASSIGN
         }
-
-
-        /*
-        safeListener<ClientChatReceivedEvent> {
-            if (it.message.formattedText.lowercase(Locale.getDefault()).contains("bep")){
-                if (beptimer.time < 60000) return@safeListener
-                player.sendChatMessage("bep")
-                beptimer.reset()
-            }
-        }
-         */
-
     }
     private fun disconnectHook() {
         state = State.QUEUE
