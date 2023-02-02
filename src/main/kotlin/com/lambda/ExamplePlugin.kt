@@ -2,6 +2,7 @@ package com.lambda
 
 import com.lambda.client.plugin.api.Plugin
 import com.lambda.commands.FingerLickerCommand
+import com.lambda.hud.FingerLickerStatusHud
 import com.lambda.hud.StatusHud
 import com.lambda.modules.Breaker
 import com.lambda.modules.FingerLicker
@@ -16,6 +17,7 @@ internal object ExamplePlugin : Plugin() {
         modules.add(Scanner)
         modules.add(FingerLicker)
         hudElements.add(StatusHud)
+        hudElements.add(FingerLickerStatusHud)
         commands.add(FingerLickerCommand)
     }
 }
