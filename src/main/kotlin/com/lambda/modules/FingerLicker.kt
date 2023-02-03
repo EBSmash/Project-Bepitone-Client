@@ -48,7 +48,7 @@ internal object FingerLicker : PluginModule(
     private var firstBlock = true
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
     private var waitDelay = 0
-    private var file = 0
+
     private fun fileFromCoordinate (x : Int) : Int {
         return x / 5
     }
@@ -68,9 +68,9 @@ internal object FingerLicker : PluginModule(
             try {
                 val mc = Minecraft.getMinecraft()
                 val url = URL("http://${url}/requestspecific/${fileFromCoordinate(startingPosition.x - Breaker.X_OFFSET)}")
-                var queue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
+                var queue : ArrayList<LinkedHashSet<BlockPos>> = ArrayList()
                 val connection = url.openConnection()
-                file = 0
+                var file = 0
                 BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                     var line: String?
                     var fileFirstLine = true
@@ -101,7 +101,6 @@ internal object FingerLicker : PluginModule(
                         }
                     }
                     BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
-                    val checkQueue = queue.toList()
                     // fuck simple for loops
                     // also look, I know this is busted, I wrote it in one night fuck off
                     var iterator : Int = indexOfStart
@@ -109,22 +108,20 @@ internal object FingerLicker : PluginModule(
                     var lastPosition = indexOfStart
                     var positionOfObby = 0
                     var positionOfAir = 0
-                    var iteratorNumber = -1 * negPosCheck(file)
                     while (checkEnum == FingerCheck.LOADING) {
-                        if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1) {
+                        if (kotlin.math.abs(queue[iterator].first().z - queue[lastPosition].first().z) > 1) {
                             checkEnum = FingerCheck.OBBY
                             positionOfObby = lastPosition
                         }
                         lastPosition = iterator
-                        iterator += iteratorNumber
+                        iterator--
                     }
                     iterator = indexOfStart
-                    iteratorNumber *= -1
                     var foundEnd = false
                     while (!foundEnd) {
                         var airBlockGate = 0
                         val airBlockGateTrue = 5
-                        for (i in checkQueue[iterator]) {
+                        for (i in queue[iterator]) {
                             if (mc.world.getBlockState(BlockPos(i.x + Breaker.X_OFFSET, 255, i.z + Breaker.Z_OFFSET)).block is BlockAir) {
                                 airBlockGate++
                             }
@@ -133,21 +130,14 @@ internal object FingerLicker : PluginModule(
                             positionOfAir = iterator
                             foundEnd = true
                         }
-                        iterator += iteratorNumber
+                        iterator ++
                     }
                     val truncatedQueue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
-                    var truncator : Int
-                    var finalTruncateThing : Int
-                    if (negPosCheck(file) == 1) {
-                        truncator = positionOfAir
-                        finalTruncateThing = positionOfObby
-                    } else {
-                        truncator = positionOfObby
-                        finalTruncateThing = positionOfAir
-                    }
+                    var truncator : Int = positionOfAir
+                    val finalTruncateThing : Int = positionOfObby
                     while (truncator >= finalTruncateThing) {
-                        truncatedQueue.add(checkQueue[truncator])
-                        for (pos in checkQueue[truncator]) {
+                        truncatedQueue.add(queue[truncator])
+                        for (pos in queue[truncator]) {
                             val sel = BetterBlockPos(pos.x + Breaker.X_OFFSET, 255, pos.z + Breaker.Z_OFFSET)
                             BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                         }
