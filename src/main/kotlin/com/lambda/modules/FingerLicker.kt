@@ -160,7 +160,7 @@ internal object FingerLicker : PluginModule(
         if (fileNum % 2 == 0) {
             return 1
         }
-        return 0
+        return -1
     }
 
     init {
@@ -274,7 +274,7 @@ internal object FingerLicker : PluginModule(
                             val currentZ = layer.first().z
                             val currentMiddleX = 2 + (fileFromCoordinate(layer.first().x) * 5)
                             if (needToMine) {
-                                goto(Breaker.X_OFFSET + currentMiddleX, currentZ + Breaker.Z_OFFSET + -1 * negPosCheck(fileFromCoordinate(layer.first().x)))
+                                goto(Breaker.X_OFFSET + currentMiddleX, currentZ + Breaker.Z_OFFSET + (-1 * negPosCheck(fileFromCoordinate(layer.first().x))))
                             }
                             breakPhase = BreakPhase.SET_AIR
                         } else if (breakPhase == BreakPhase.SET_AIR) {
