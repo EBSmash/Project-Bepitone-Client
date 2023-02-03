@@ -12,7 +12,6 @@ import com.lambda.client.util.text.MessageSendHelper
 import com.lambda.client.util.threads.safeListener
 import net.minecraft.block.BlockAir
 import net.minecraft.block.BlockLiquid
-import net.minecraft.block.BlockObsidian
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiDisconnected
 import net.minecraft.util.math.BlockPos
@@ -38,13 +37,13 @@ internal object FingerLicker : PluginModule(
     var state = MineState.ASSIGN
     var breakPhase : BreakPhase = BreakPhase.SELECT
 
-    var listOfFiles = ArrayList<Int>()
+    var listOfFiles : Queue<Int> = LinkedList()
 
     private var jobQueue : Queue<Deque<LinkedHashSet<BlockPos>>> = LinkedList()
     private var currentJob : Deque<LinkedHashSet<BlockPos>> = LinkedList()
 
     private var delayReconnect = 0
-    private val url = "localhost:8000"
+    private const val url = "alightintheendlessvoid.org"
     private var finishedWithFile = false
     private var firstBlock = true
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
@@ -59,7 +58,10 @@ internal object FingerLicker : PluginModule(
 
     fun requestNewFile(startingPosition : BlockPos) {
         if (state != MineState.ASSIGN) return
-        if (listOfFiles.contains(fileFromCoordinate(startingPosition.x - Breaker.X_OFFSET))) return
+        if (listOfFiles.contains(fileFromCoordinate(startingPosition.x - Breaker.X_OFFSET))) {
+            MessageSendHelper.sendChatMessage("Already queued this toe finger extremity")
+            return
+        }
         state = MineState.LOAD
         thread {
             try {
@@ -100,37 +102,40 @@ internal object FingerLicker : PluginModule(
                     BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                     val checkQueue = queue.toList()
                     // fuck simple for loops
+                    // also look, I know this is busted, I wrote it in one night fuck off
                     var iterator : Int = indexOfStart
                     var checkEnum = FingerCheck.LOADING
-                    var lastPosition = 0
+                    var lastPosition = indexOfStart
                     var positionOfObby = 0
                     var positionOfAir = 0
+                    var iteratorNumber = -1 * negPosCheck(file)
                     while (checkEnum == FingerCheck.LOADING) {
                         var airBlockGate = 0
-                        val airBlockGateTrue = checkQueue[iterator].size
+                        val airBlockGateTrue = 5
                         for (i in checkQueue[iterator]) {
                             if (mc.world.getBlockState(BlockPos(i.x + Breaker.X_OFFSET, 255, i.z + Breaker.Z_OFFSET)).block is BlockAir) {
                                 airBlockGate++
                             }
                         }
-                        if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1) {
+                        if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1 && iteratorNumber == -1) {
                             checkEnum = FingerCheck.OBBY
                             positionOfObby = lastPosition
                         }
-                        if (airBlockGate == airBlockGateTrue) {
+                        if (airBlockGate == airBlockGateTrue && iteratorNumber == 1) {
                             checkEnum = FingerCheck.AIR
                             positionOfAir = iterator
                         }
                         lastPosition = iterator
-                        iterator++
+                        iterator += iteratorNumber
                     }
-                    lastPosition = 0
                     iterator = indexOfStart
+                    lastPosition = indexOfStart
+                    iteratorNumber *= -1
                     if (checkEnum == FingerCheck.OBBY) {
                         var foundEnd = false
                         while (!foundEnd) {
                             var airBlockGate = 0
-                            val airBlockGateTrue = checkQueue[iterator].size
+                            val airBlockGateTrue = 5
                             for (i in checkQueue[iterator]) {
                                 if (mc.world.getBlockState(BlockPos(i.x + Breaker.X_OFFSET, 255, i.z + Breaker.Z_OFFSET)).block is BlockAir) {
                                     airBlockGate++
@@ -140,7 +145,7 @@ internal object FingerLicker : PluginModule(
                                 positionOfAir = iterator
                                 foundEnd = true
                             }
-                            iterator--
+                            iterator += iteratorNumber
                         }
                     } else {
                         var foundEnd = false
@@ -150,22 +155,19 @@ internal object FingerLicker : PluginModule(
                                 foundEnd = true
                             }
                             lastPosition = iterator
-                            iterator--
+                            iterator += iteratorNumber
                         }
                     }
                     val truncatedQueue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
-                    var truncator = if (negPosCheck(file) == 1) {
-                        positionOfAir
+                    var truncator : Int
+                    var finalTruncateThing : Int
+                    if (negPosCheck(file) == 1) {
+                        truncator = positionOfAir
+                        finalTruncateThing = positionOfObby
                     } else {
-                        positionOfObby
+                        truncator = positionOfObby
+                        finalTruncateThing = positionOfAir
                     }
-                    val finalTruncateThing = if (negPosCheck(file) == 1) {
-                        positionOfObby
-                    } else {
-                        positionOfAir
-                    }
-                    MessageSendHelper.sendChatMessage("$truncator...$finalTruncateThing")
-                    MessageSendHelper.sendChatMessage("possible: $positionOfObby or $positionOfAir")
                     while (truncator >= finalTruncateThing) {
                         truncatedQueue.add(checkQueue[truncator])
                         for (pos in checkQueue[truncator]) {
@@ -241,11 +243,6 @@ internal object FingerLicker : PluginModule(
                 return@safeListener
             }
 
-            if (listOfFiles.isEmpty()) {
-                disable()
-                return@safeListener
-            }
-
             when (state) {
                 MineState.LOAD -> {
                     if (finishedWithFile) {
@@ -258,6 +255,7 @@ internal object FingerLicker : PluginModule(
                 MineState.TRAVEL -> {
                     if (jobQueue.isNotEmpty()) {
                         currentJob = jobQueue.poll()
+                        listOfFiles.poll()
                         state = MineState.MINE
                     } else {
                         MessageSendHelper.sendChatMessage("Please assign more jobs")
@@ -277,10 +275,11 @@ internal object FingerLicker : PluginModule(
                             }
                             val layer = currentJob.poll()
                             if (firstBlock) {
+                                selections.clear()
                                 selections.add(layer)
                                 selections.add(layer)
                                 firstBlock = false
-                                MessageSendHelper.sendChatMessage("first line of file")
+                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.removeAllSelections()
                             } else {
                                 selections[1] = selections[0]
                                 selections[0] = layer
@@ -293,8 +292,8 @@ internal object FingerLicker : PluginModule(
                                     mc.world.getBlockState(sel).block !is BlockAir &&
                                     mc.world.getBlockState(sel).block !is IFluidBlock) { // pretty much just "not water"
                                     needToMine = true
-                                    BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                                 }
+                                BaritoneAPI.getProvider().primaryBaritone.selectionManager.addSelection(sel, sel)
                             }
                             for (coord in selections[0]) {
                                 val sel = BetterBlockPos(coord.x + Breaker.X_OFFSET, 255, coord.z + Breaker.Z_OFFSET)
@@ -334,9 +333,9 @@ internal object FingerLicker : PluginModule(
                             disable()
                             return@safeListener
                         }
-                        if (mc.player.dimension == 0 && delayReconnect != 100) {
+                        if (mc.player.dimension == 0 && delayReconnect != 200) {
                             delayReconnect++
-                        } else if (mc.player.dimension == 0 && delayReconnect == 100) {
+                        } else if (mc.player.dimension == 0 && delayReconnect == 200) {
                             state = MineState.MINE
                             delayReconnect = 0
                         }

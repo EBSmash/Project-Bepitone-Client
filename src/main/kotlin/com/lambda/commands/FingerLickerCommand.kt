@@ -15,7 +15,7 @@ object FingerLickerCommand : ClientCommand(
                 if (FingerLicker.isEnabled) {
                     if (FingerLicker.state == FingerLicker.MineState.ASSIGN) {
                         if (FingerLicker.state != FingerLicker.MineState.LOAD) {
-                            FingerLicker.state = FingerLicker.MineState.TRAVEL
+                            FingerLicker.state = FingerLicker.MineState.MINE
                         } else {
                             MessageSendHelper.sendChatMessage("Finger Licker is currently loading")
                         }
