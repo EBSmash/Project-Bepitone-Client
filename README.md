@@ -2,6 +2,16 @@
 
 It all started as an idea... An idea that bep could reign over the skies of 2b2t. The glorious word shining down upon the other worldly landscape of 2b2t spawn. So on that day we began, we began what would become... Bepitone.
 
+# Modules:
+
+### BepitoneBreaker:
+Communticates with API and actually does the mining (crazy)
+
+### BepitoneScanner:
+Scans old parts of the image to find where other bots have failed and report them to the API to be assigned as failed layers
+
+### BepitoneFingerLicker:
+Fixes issues with the old old old client where it would leave "fingers" on parts of the B
 
 # History:
 
@@ -10,6 +20,7 @@ While sitting in a vc it occured to use, the giant sky... wasnt a blockade for a
 
 ### November 18 2022: Progress
 the first succesful test of bepitone one 2b2t
+
 ![image](https://user-images.githubusercontent.com/53373788/216406268-92a84e2c-89d0-486d-b6a4-59f5b13b401a.png)
 
 ### November 22: Day 1 Hour Zero
@@ -24,6 +35,8 @@ BabbaJ is a genious as we all know he is also a strong believer in the power of 
 ### Febuary 1 2023: BEP
 Bep is complete, now dan needs to make fingerfucker.
 
+### February 3 2023: bep^2
+Bep is hella fixed fingerfucker is shloinked
 
 # The speech
 I have a bep!
