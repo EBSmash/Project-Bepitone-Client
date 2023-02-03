@@ -28,7 +28,7 @@ internal object StatusHud : PluginLabelHud(
             displayText.addLine("Depth: $currentDepth/$totalDepth")
         }
         val goalProc: ICustomGoalProcess = BaritoneAPI.getProvider().primaryBaritone.customGoalProcess
-        if (goalProc.isActive) {
+        if (goalProc.isActive && Breaker.isEnabled) { // why is this crashing my shit babbaj? HMMMM?
             if (goalProc.goal is RoofGoal) {
                 val goal = (goalProc.goal as RoofGoal).goal
                 displayText.addLine("Going to ${goal.x} ${goal.z}")
