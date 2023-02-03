@@ -13,7 +13,6 @@ internal object FingerLickerStatusHud : PluginLabelHud(
 ) {
 
     override fun SafeClientEvent.updateText() {
-        displayText.addLine("Currently queued files: ${FingerLicker.listOfFiles}")
         displayText.addLine("State: ${FingerLicker.state}")
         displayText.addLine("Mine state: ${FingerLicker.breakPhase}")
     }

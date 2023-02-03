@@ -48,6 +48,7 @@ internal object FingerLicker : PluginModule(
     private var firstBlock = true
     private var selections: ArrayList<LinkedHashSet<BlockPos>> = ArrayList(2)
     private var waitDelay = 0
+    private var file = 0
     private fun fileFromCoordinate (x : Int) : Int {
         return x / 5
     }
@@ -69,7 +70,7 @@ internal object FingerLicker : PluginModule(
                 val url = URL("http://${url}/requestspecific/${fileFromCoordinate(startingPosition.x - Breaker.X_OFFSET)}")
                 var queue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
                 val connection = url.openConnection()
-                var file = 0
+                file = 0
                 BufferedReader(InputStreamReader(connection.getInputStream())).use { inp ->
                     var line: String?
                     var fileFirstLine = true
@@ -110,6 +111,17 @@ internal object FingerLicker : PluginModule(
                     var positionOfAir = 0
                     var iteratorNumber = -1 * negPosCheck(file)
                     while (checkEnum == FingerCheck.LOADING) {
+                        if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1) {
+                            checkEnum = FingerCheck.OBBY
+                            positionOfObby = lastPosition
+                        }
+                        lastPosition = iterator
+                        iterator += iteratorNumber
+                    }
+                    iterator = indexOfStart
+                    iteratorNumber *= -1
+                    var foundEnd = false
+                    while (!foundEnd) {
                         var airBlockGate = 0
                         val airBlockGateTrue = 5
                         for (i in checkQueue[iterator]) {
@@ -117,46 +129,11 @@ internal object FingerLicker : PluginModule(
                                 airBlockGate++
                             }
                         }
-                        if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1 && iteratorNumber == -1) {
-                            checkEnum = FingerCheck.OBBY
-                            positionOfObby = lastPosition
-                        }
-                        if (airBlockGate == airBlockGateTrue && iteratorNumber == 1) {
-                            checkEnum = FingerCheck.AIR
+                        if (airBlockGate == airBlockGateTrue) {
                             positionOfAir = iterator
+                            foundEnd = true
                         }
-                        lastPosition = iterator
                         iterator += iteratorNumber
-                    }
-                    iterator = indexOfStart
-                    lastPosition = indexOfStart
-                    iteratorNumber *= -1
-                    if (checkEnum == FingerCheck.OBBY) {
-                        var foundEnd = false
-                        while (!foundEnd) {
-                            var airBlockGate = 0
-                            val airBlockGateTrue = 5
-                            for (i in checkQueue[iterator]) {
-                                if (mc.world.getBlockState(BlockPos(i.x + Breaker.X_OFFSET, 255, i.z + Breaker.Z_OFFSET)).block is BlockAir) {
-                                    airBlockGate++
-                                }
-                            }
-                            if (airBlockGate == airBlockGateTrue) {
-                                positionOfAir = iterator
-                                foundEnd = true
-                            }
-                            iterator += iteratorNumber
-                        }
-                    } else {
-                        var foundEnd = false
-                        while (!foundEnd) {
-                            if (kotlin.math.abs(checkQueue[iterator].first().z - checkQueue[lastPosition].first().z) > 1) {
-                                positionOfObby = lastPosition
-                                foundEnd = true
-                            }
-                            lastPosition = iterator
-                            iterator += iteratorNumber
-                        }
                     }
                     val truncatedQueue : Deque<LinkedHashSet<BlockPos>> = LinkedList()
                     var truncator : Int
