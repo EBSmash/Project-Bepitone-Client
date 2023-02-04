@@ -31,6 +31,8 @@ Bepitone now has a leaderboard that would sadly glitch and be reset once but wor
 
 ### ~ December 8 2022: BeppaJ
 BabbaJ is a genious as we all know he is also a strong believer in the power of Bep, so he joins the dev team.
+He continues to rewrite the entire busted api system (thanks dan) and highly optimizes and improves the client code.
+
 
 ### Febuary 1 2023: BEP
 Bep is complete, now dan needs to make fingerfucker.
